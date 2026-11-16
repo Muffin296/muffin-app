@@ -126,9 +126,11 @@
     FUN_CONVERT_MAX_MINUTES_PER_DAY: 120,
     // Mỗi ngày phải gửi đủ 5 Muffin vào Kho thì mới được đổi phút giải trí hôm đó.
     DAILY_KHO_MIN: 5,
-    // Mục tiêu: tối đa 10 mục mỗi ngày, lên kế hoạch được cho hôm nay và 6 ngày tới.
-    GOALS_MAX_PER_DAY: 10,
+    // Mục tiêu: thêm bao nhiêu mục mỗi ngày cũng được, lên kế hoạch được cho hôm nay và 6 ngày tới.
     GOAL_PLAN_DAYS: 7,
+    // Thưởng mục tiêu: hoàn thành đủ 10 mục tiêu trong 1 ngày → +2 Muffin thường (mỗi ngày 1 lần).
+    GOAL_BONUS_COUNT: 10,
+    GOAL_BONUS_MUFFIN: 2,
     // Kho nhiệm vụ: tối đa 300 nhiệm vụ.
     TASK_BANK_MAX: 300,
     // Giữ tối đa bấy nhiêu bản ghi nhật ký (cũ hơn thì không hoàn tác được nữa).
@@ -186,7 +188,7 @@
   }
 
   // deposited: Muffin đã gửi Kho trong ngày; conv: phút giải trí đã đổi trong ngày
-  function emptyDay() { return { home: 0, class: 0, work: 0, gym: 0, earned: 0, spent: 0, deposited: 0, conv: 0 }; }
+  function emptyDay() { return { home: 0, class: 0, work: 0, gym: 0, earned: 0, spent: 0, deposited: 0, conv: 0, goalBonus: 0 }; }
   function ensureDay(s, key) {
     if (!s.days[key]) s.days[key] = emptyDay();
     return s.days[key];
@@ -613,7 +615,8 @@
   }
 
   /* ---------- Mục tiêu theo ngày ---------- */
-  // Mỗi ngày có danh sách mục tiêu riêng (tối đa 10). Sang ngày mới là danh sách mới, tick cũ không mang theo.
+  // Mỗi ngày có danh sách mục tiêu riêng (không giới hạn số mục). Sang ngày mới là danh sách mới, tick cũ không mang theo.
+  // Hoàn thành đủ 10 mục tiêu trong ngày → tự cộng 2 Muffin thường; bỏ tick xuống dưới 10 thì trừ lại.
   // Sửa được mục tiêu của hôm nay và 6 ngày tới; chỉ tick được mục tiêu của hôm nay.
   function goalsOf(state, date) { return (state.goalDays && state.goalDays[date]) || []; }
   function planDates(today) {
@@ -636,23 +639,18 @@
     if (err) return fail(err);
     const s = clone(state);
     const list = s.goalDays[date] ? s.goalDays[date] : (s.goalDays[date] = []);
-    let added = 0, dup = 0, full = 0;
+    let added = 0, dup = 0;
     (Array.isArray(texts) ? texts : [texts]).forEach((raw, i) => {
       const t = cleanText(raw);
       if (!t) return;
       if (list.some((g) => sameText(g.text, t))) { dup++; return; }
-      if (list.length >= RULES.GOALS_MAX_PER_DAY) { full++; return; }
       list.push({ id: (ctx.id || ('g' + ctx.now)) + '_' + i, text: t, done: false });
       added++;
     });
     if (!list.length) delete s.goalDays[date];
-    if (!added) {
-      if (full) return fail('Mỗi ngày tối đa ' + RULES.GOALS_MAX_PER_DAY + ' mục tiêu.');
-      if (dup) return fail('Mục tiêu này đã có trong ngày.');
-      return fail('Hãy nhập tên mục tiêu.');
-    }
+    if (!added) return fail(dup ? 'Mục tiêu này đã có trong ngày.' : 'Hãy nhập tên mục tiêu.');
     const r = ok(s);
-    r.added = added; r.dup = dup; r.full = full;
+    r.added = added; r.dup = dup;
     return r;
   }
   function editGoal(state, date, goalId, text, today) {
@@ -676,15 +674,49 @@
     if (i < 0) return fail('Không tìm thấy mục tiêu.');
     list.splice(i, 1);
     if (!list.length) delete s.goalDays[date];
+    const b = settleGoalBonus(s, date, null);
+    if (b.error) return fail(b.error);
     return ok(s);
   }
-  function toggleGoal(state, date, goalId, today) {
+  function toggleGoal(state, date, goalId, today, ctx) {
     if (date !== today) return fail('Chỉ tick được mục tiêu của hôm nay.');
     const s = clone(state);
     const g = (s.goalDays[date] || []).find((x) => x.id === goalId);
     if (!g) return fail('Không tìm thấy mục tiêu.');
     g.done = !g.done;
-    return ok(s);
+    const b = settleGoalBonus(s, date, ctx);
+    if (b.error) return fail(b.error);
+    const r = ok(s, b.entry);
+    r.bonus = b.entry ? b.entry.amount : b.removed ? -b.removed : 0;
+    return r;
+  }
+  // Thông tin thưởng mục tiêu của 1 ngày
+  function goalBonusInfo(state, date) {
+    const done = goalsOf(state, date).filter((g) => g.done).length;
+    const got = (state.days[date] && state.days[date].goalBonus) || 0;
+    return { done: done, need: RULES.GOAL_BONUS_COUNT, reward: RULES.GOAL_BONUS_MUFFIN, got: got };
+  }
+  // Đủ 10 mục hoàn thành → cộng thưởng (1 lần/ngày). Xuống dưới 10 → trừ lại và bỏ bản ghi thưởng.
+  function settleGoalBonus(s, date, ctx) {
+    const info = goalBonusInfo(s, date);
+    if (info.done >= info.need && !info.got && ctx) {
+      const amount = RULES.GOAL_BONUS_MUFFIN;
+      const day = ensureDay(s, date);
+      s.muffin += amount; day.earned += amount; day.goalBonus = amount;
+      const entry = baseEntry('goalBonus', ctx); entry.date = date; entry.amount = amount;
+      pushLog(s, entry);
+      return { entry: entry };
+    }
+    if (info.done < info.need && info.got) {
+      if (s.muffin < info.got) return { error: 'Thưởng ' + info.got + ' Muffin của mục tiêu hôm nay đã được tiêu, không bỏ tick được.' };
+      const day = ensureDay(s, date);
+      s.muffin -= info.got; clampDown(day, 'earned', info.got); day.goalBonus = 0;
+      for (let i = s.log.length - 1; i >= 0; i--) {
+        if (s.log[i].type === 'goalBonus' && s.log[i].date === date) { s.log.splice(i, 1); break; }
+      }
+      return { removed: info.got };
+    }
+    return {};
   }
   // Chép tên các mục tiêu từ một ngày sang ngày khác (không chép dấu tick)
   function copyGoals(state, fromDate, toDate, today, ctx) {
@@ -796,6 +828,12 @@
         s.muffin -= e.reward; s.boxOpened = Math.max(0, s.boxOpened - 1);
         clampDown(ensureDay(s, e.date), 'earned', e.reward);
         return null;
+      case 'goalBonus': {
+        if (s.muffin < e.amount) return 'Cần trừ lại ' + e.amount + ' Muffin thường nhưng chỉ còn ' + s.muffin + '.';
+        const day = ensureDay(s, e.date);
+        s.muffin -= e.amount; clampDown(day, 'earned', e.amount); day.goalBonus = 0;
+        return null;
+      }
       case 'claimDay':
       case 'claimHabit': {
         if (e.got.fun) {
@@ -851,6 +889,7 @@
       case 'use': return 'Dùng "' + ITEM[e.item].bagName + '"';
       case 'spendFun': return 'Tiêu ' + e.minutes + ' phút giải trí';
       case 'box': return 'Mở Hộp Huyền Thoại → +' + e.reward + ' 🧁';
+      case 'goalBonus': return 'Hoàn thành ' + RULES.GOAL_BONUS_COUNT + ' mục tiêu trong ngày → +' + e.amount + ' 🧁';
       case 'claimDay': return 'Nhận thưởng Chuỗi Ngày mốc ' + e.at + ': ' + rewardText(e.got);
       case 'claimHabit': return 'Nhận thưởng Chuỗi Thói Quen "' + e.habitName + '" mốc ' + e.at + ': ' + rewardText(e.got);
       default: return e.type;
@@ -970,7 +1009,7 @@
     boxInfo, pickBoxReward, openBox,
     computeDayStreak, computeHabitStreak, milestoneStatus, claimDayMilestone, claimHabitMilestone,
     addHabit, renameHabit, removeHabit, toggleHabitDay, funConvertInfo,
-    goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, copyGoals, pruneGoalDays,
+    goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, goalBonusInfo, copyGoals, pruneGoalDays,
     addTasks, editTask, removeTask, addTasksToDay,
     deleteEntry, undoLast, describeEntry, rewardText,
     applySetup, exportData, importData, statsRange, statsAllTime, needsBackupReminder,

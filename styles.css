@@ -270,6 +270,9 @@ p { margin: 0; }
 .empty-goals { color: var(--muted); font-size: 14.5px; padding: 10px 2px; }
 .goal-add { margin-top: 8px; }
 .goal-tools { margin-top: 10px; }
+.goal-bonus { background: var(--green-50); border-radius: 12px; padding: 8px 12px 10px; margin-bottom: 6px; }
+.goal-bonus .bar-text { margin: 0 0 6px; color: #14532D; }
+.goal-bonus.got { background: var(--green-100); }
 .linkish { background: none; border: 0; padding: 4px 0; min-height: 0; color: var(--green); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
 
 /* Dải chọn ngày cho mục tiêu */

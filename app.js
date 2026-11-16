@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const MAIN_TABS = ['today', 'box', 'shop', 'streak', 'habits', 'bag'];
@@ -286,8 +286,9 @@
     let prev = null;
     for (let i = 1; i <= 14 && !prev; i++) { const p = M.addDays(d, -i); if (M.goalsOf(state, p).length) prev = p; }
     let html = '<section class="card" id="goalsCard"><div class="card-head"><h3>' + esc(goalTitle(d, t)) + '</h3>' +
-      (isToday ? '<span class="pill" id="goalCount">' + done + '/' + items.length + '</span>' : '<span class="pill">' + items.length + '/' + R.GOALS_MAX_PER_DAY + '</span>') + '</div>' +
-      '<div class="dstrip" role="group" aria-label="Chọn ngày">' + strip + '</div>';
+      (isToday ? '<span class="pill" id="goalCount">' + done + '/' + items.length + '</span>' : '<span class="pill">' + items.length + ' mục</span>') + '</div>' +
+      '<div class="dstrip" role="group" aria-label="Chọn ngày">' + strip + '</div>' +
+      (isToday ? goalBonusHTML() : '');
     if (items.length) {
       html += '<ul class="goal-list">' + items.map((g, i) =>
         '<li class="goal' + (g.done ? ' done' : '') + '">' +
@@ -300,10 +301,8 @@
     } else {
       html += '<p class="empty-goals">Chưa có mục tiêu cho ngày này.</p>';
     }
-    if (items.length < R.GOALS_MAX_PER_DAY) {
-      html += '<form class="row goal-add" data-form="goal-add"><input name="text" maxlength="80" autocomplete="off" placeholder="Thêm mục tiêu…" aria-label="Thêm mục tiêu mới" enterkeyhint="done">' +
-        '<button class="btn primary" type="submit" aria-label="Thêm mục tiêu">+</button></form>';
-    }
+    html += '<form class="row goal-add" data-form="goal-add"><input name="text" maxlength="80" autocomplete="off" placeholder="Thêm mục tiêu…" aria-label="Thêm mục tiêu mới" enterkeyhint="done">' +
+      '<button class="btn primary" type="submit" aria-label="Thêm mục tiêu">+</button></form>';
     html += '<div class="btn-row goal-tools">' +
       '<button class="btn soft" data-act="goal-pick"' + (state.tasks.length ? '' : ' disabled') + '>📋 Lấy từ Kho nhiệm vụ</button>' +
       (prev && !items.length ? '<button class="btn soft" data-act="goal-copy" data-from="' + prev + '">Chép từ ' + esc(planLabel(prev, t) === 'Nay' ? 'hôm nay' : dayLabel(prev).toLowerCase()) + '</button>' : '') +
@@ -313,17 +312,25 @@
     return html;
   }
 
+  // Thanh thưởng: hoàn thành đủ 10 mục tiêu hôm nay → +2 Muffin
+  function goalBonusHTML() {
+    const b = M.goalBonusInfo(state, todayKey());
+    const shown = Math.min(b.done, b.need);
+    return '<div class="goal-bonus' + (b.got ? ' got' : '') + '" id="goalBonus">' +
+      '<div class="bar-text"><span>' + (b.got ? '🎉 Đã nhận <b>+' + b.got + ' 🧁</b> vì xong ' + b.need + ' mục tiêu' : '🎯 Xong <b>' + b.need + '</b> mục tiêu hôm nay → <b>+' + b.reward + ' 🧁</b>') + '</span>' +
+      '<span><b>' + shown + '/' + b.need + '</b></span></div>' +
+      '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + b.need + '" aria-valuenow="' + shown + '" aria-label="Tiến độ thưởng mục tiêu"><span style="width:' + pct(shown, b.need) + '%"></span></div></div>';
+  }
+
   // Bảng chọn nhiều nhiệm vụ từ Kho để thêm vào ngày đang chọn
   async function pickFromBank() {
     const t = todayKey();
     const d = ui.goalDate;
     const have = M.goalsOf(state, d).map((g) => g.text.toLowerCase());
-    const room = R.GOALS_MAX_PER_DAY - have.length;
-    if (room <= 0) return toast('Ngày này đã đủ ' + R.GOALS_MAX_PER_DAY + ' mục tiêu.', 'error');
     let wrapEl = null;
     const yes = await confirmBox({
       title: '📋 Thêm vào ' + goalTitle(d, t).replace('Mục tiêu ', ''),
-      html: '<p class="muted">Chọn nhiệm vụ (còn chỗ cho ' + room + ' mục).</p><ul class="pick-list">' + state.tasks.map((k) => {
+      html: '<p class="muted">Chọn các nhiệm vụ muốn thêm.</p><ul class="pick-list">' + state.tasks.map((k) => {
         const exists = have.indexOf(k.text.toLowerCase()) >= 0;
         return '<li><label class="pick' + (exists ? ' off' : '') + '"><input type="checkbox" value="' + esc(k.id) + '"' + (exists ? ' disabled' : '') + '><span>' + esc(k.text) + (exists ? ' <small>(đã có)</small>' : '') + '</span></label></li>';
       }).join('') + '</ul>',
@@ -334,7 +341,7 @@
         const upd = () => {
           const n = wrap.querySelectorAll('.pick-list input:checked').length;
           btn.textContent = n ? 'Thêm ' + n + ' mục' : 'Thêm';
-          btn.disabled = n === 0 || n > room;
+          btn.disabled = n === 0;
         };
         wrap.addEventListener('change', upd); upd();
       },
@@ -342,7 +349,7 @@
     if (!yes || !wrapEl) return;
     const ids = [...wrapEl.querySelectorAll('.pick-list input:checked')].map((i) => i.value);
     const res = M.addTasksToDay(state, ids, d, t, ctx());
-    if (commit(res)) toast('Đã thêm ' + res.added + ' mục tiêu' + (res.full ? ' (' + res.full + ' mục không vừa vì đủ 10)' : ''), 'success');
+    if (commit(res)) toast('Đã thêm ' + res.added + ' mục tiêu', 'success');
   }
 
   /* ================= CÁC MÀN ================= */
@@ -730,7 +737,8 @@
       '<li>Mỗi mốc nhận được 1 lần trong một lượt chuỗi (với Chuỗi Ngày là 1 lần mỗi chu kì). Chuỗi đứt rồi đạt lại thì được nhận lại.</li>' +
       '<li>Thưởng phút → Quỹ Thời Gian Giải Trí. Thưởng là món → Túi Đồ. Muffin từ hộp → Muffin thường.</li></ul></section>' +
       '<section class="card"><h3>8. Mục tiêu, nhật ký, sao lưu</h3><ul>' +
-      '<li><b>Mục tiêu</b>: mỗi ngày tối đa ' + R.GOALS_MAX_PER_DAY + ' mục. Chọn ngày ở dải ngày trên thẻ để sửa mục tiêu của hôm nay và ' + (R.GOAL_PLAN_DAYS - 1) + ' ngày tới. Chỉ tick được mục tiêu của hôm nay.</li>' +
+      '<li><b>Mục tiêu</b>: mỗi ngày thêm bao nhiêu mục cũng được. Chọn ngày ở dải ngày trên thẻ để sửa mục tiêu của hôm nay và ' + (R.GOAL_PLAN_DAYS - 1) + ' ngày tới. Chỉ tick được mục tiêu của hôm nay.</li>' +
+      '<li><b>Thưởng mục tiêu</b>: hoàn thành đủ <b>' + R.GOAL_BONUS_COUNT + ' mục tiêu</b> trong ngày → tự cộng <b>+' + R.GOAL_BONUS_MUFFIN + ' Muffin thường</b> (mỗi ngày 1 lần). Bỏ tick xuống dưới ' + R.GOAL_BONUS_COUNT + ' thì bị trừ lại.</li>' +
       '<li><b>Kho nhiệm vụ</b>: điền sẵn nhiều nhiệm vụ (mỗi dòng 1 cái), rồi bấm 📋 để lấy ra làm mục tiêu cho ngày đang chọn.</li>' +
       '<li>Mọi hành động đều vào Nhật ký; có Hoàn tác và xóa từng bản ghi (tự cộng/trừ lại điểm).</li>' +
       '<li>Dữ liệu chỉ nằm trên máy này. Nên Xuất JSON ít nhất mỗi tuần (app sẽ nhắc sau ' + R.BACKUP_REMIND_DAYS + ' ngày).</li></ul></section>' +
@@ -1005,11 +1013,23 @@
     const t = todayKey();
     const chk = ev.target.closest('[data-goal-check]');
     if (chk) {
-      const res = M.toggleGoal(state, ui.goalDate, chk.dataset.goalCheck, t);
+      const res = M.toggleGoal(state, ui.goalDate, chk.dataset.goalCheck, t, ctx());
       if (!res.ok) { chk.checked = !chk.checked; return toast(res.error, 'error'); }
       state = res.state; save();
       chk.closest('.goal').classList.toggle('done', chk.checked);
       refreshGoalCount();
+      if (res.bonus) {
+        // số Muffin đổi → vẽ lại cả trang để số dư, "Muffin hôm nay" và thanh thưởng cùng cập nhật
+        ui.bump = res.bonus > 0;
+        render();
+        if (res.bonus > 0) {
+          const entry = res.entry;
+          toast('🎉 Xong ' + R.GOAL_BONUS_COUNT + ' mục tiêu hôm nay! +' + res.bonus + ' Muffin', 'success', { label: 'Hoàn tác', fn: () => undoEntry(entry.id) });
+        } else toast('Đã trừ lại ' + (-res.bonus) + ' Muffin thưởng mục tiêu (chưa đủ ' + R.GOAL_BONUS_COUNT + ' mục).', 'info');
+      } else {
+        const gb = $('#goalBonus');
+        if (gb) gb.outerHTML = goalBonusHTML();
+      }
       return;
     }
     const txt = ev.target.closest('[data-goal-edit]');
