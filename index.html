@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Muffin</title>
+  <meta name="description" content="Muffin Study Game — tự thưởng khi học, làm việc và tập gym.">
+  <meta name="theme-color" content="#FFFFFF">
+  <!-- PWA cho iPhone -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Muffin">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar" id="topbar">
+      <div class="topbar-row">
+        <button class="brand" data-act="go" data-view="today" aria-label="Về trang Ghi nhận">
+          <img src="icons/icon.svg" alt="" width="30" height="30">
+          <span>Muffin</span>
+        </button>
+        <div class="top-actions" id="topActions"></div>
+      </div>
+      <div class="statbar" id="statbar" aria-label="Chỉ số"></div>
+    </header>
+    <div id="banner"></div>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="Chỉ số và mục tiêu"></aside>
+      <main class="main">
+        <nav class="tabs" id="tabs" aria-label="Điều hướng chính"></nav>
+        <div id="view" class="view"></div>
+      </main>
+    </div>
+
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+    <div id="modalRoot"></div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
+  <noscript>Muffin cần bật JavaScript.</noscript>
+  <script src="rules.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
