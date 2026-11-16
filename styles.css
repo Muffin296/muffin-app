@@ -1,4 +1,4 @@
-/* Muffin Study Game — giao diện (ưu tiên iPhone 375–430px) */
+/* Muffin Study Game: giao diện (ưu tiên iPhone 375-430px) */
 :root {
   --bg: #F3F5F4;
   --card: #FFFFFF;
@@ -266,6 +266,48 @@ p { margin: 0; }
 .goal-text { flex: 1; min-width: 0; border-color: transparent !important; background: transparent; padding: 0 6px; }
 .goal-text:focus { background: var(--soft); border-color: #CBD3CE !important; outline: none; }
 .goal.done .goal-text { text-decoration: line-through; color: var(--muted); }
+.goal-num { width: 44px; height: 44px; flex: none; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: var(--muted); }
+.empty-goals { color: var(--muted); font-size: 14.5px; padding: 10px 2px; }
+.goal-add { margin-top: 8px; }
+.goal-tools { margin-top: 10px; }
+.linkish { background: none; border: 0; padding: 4px 0; min-height: 0; color: var(--green); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
+
+/* Dải chọn ngày cho mục tiêu */
+.dstrip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 4px 0 8px; }
+.dchip {
+  min-height: 56px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; padding: 4px 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.1;
+}
+.dchip span { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.dchip b { font-size: 16px; font-weight: 800; }
+.dchip i { font-style: normal; font-size: 11px; font-weight: 800; color: var(--green); min-height: 13px; }
+.dchip.on { background: var(--green); border-color: var(--green); color: #fff; }
+.dchip.on span, .dchip.on i { color: #fff; }
+
+/* Kho nhiệm vụ */
+textarea {
+  width: 100%; font-size: 16px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid #CBD3CE; background: #fff;
+  resize: vertical; min-height: 104px; line-height: 1.4;
+}
+textarea:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(21, 128, 61, .18); }
+.list > .li.task-li { gap: 6px; padding: 6px 8px 6px 10px; min-height: 56px; }
+.task-li .pill { flex: none; }
+.pick-list { list-style: none; margin: 10px 0 0; padding: 0; max-height: 46vh; overflow-y: auto; }
+.pick { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 2px; cursor: pointer; }
+.pick input { width: 22px; height: 22px; flex: none; accent-color: var(--green); }
+.pick.off { color: var(--muted); cursor: default; }
+.pick small { font-size: 12.5px; }
+li + li > .pick { border-top: 1px solid var(--line); }
+
+/* Gửi Kho mỗi ngày và giới hạn đổi phút */
+.pill.kho-ok { background: var(--green-100); color: var(--green-strong); }
+.pill.kho-need { background: var(--day-bg); color: var(--day); }
+.lock-note { margin-top: 10px; font-size: 14px; color: #78350F; background: var(--day-bg); border-radius: 10px; padding: 8px 10px; border-left: 4px solid var(--day-bar); }
+.kho-line { margin-top: 8px; font-size: 14px; color: var(--muted); }
+.kho-line b { color: var(--text); }
+.row input:disabled { background: #EEF1EF; color: #6B746F; }
+.hero-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pill.cycle { background: #78350F; color: #FFFBEB; font-size: 14px; }
 
 /* ---------------- Hộp ---------------- */
 .box-card { text-align: center; padding: 22px 16px; }

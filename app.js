@@ -1,9 +1,9 @@
-/* Muffin Study Game — giao diện, lưu trữ, PWA. Luật chơi nằm trong rules.js */
+/* Muffin Study Game: giao diện, lưu trữ, PWA. Luật chơi nằm trong rules.js */
 (function () {
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.1.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const MAIN_TABS = ['today', 'box', 'shop', 'streak', 'habits', 'bag'];
@@ -62,10 +62,10 @@
   let state = loadState();
   let view = 'today';
   let prevMain = 'today';
-  const ui = { statsRange: 7, logLimit: 60, flash: null, bump: false, habitTableOpen: false };
   const todayKey = () => M.dateKey(Date.now());
   let lastToday = todayKey();
-  state = M.normalizeGoals(state, lastToday);
+  const ui = { statsRange: 7, logLimit: 60, flash: null, bump: false, habitTableOpen: false, goalDate: lastToday };
+  state = M.pruneGoalDays(state, lastToday);
   const wideMQ = window.matchMedia('(min-width: 900px)');
   const isWide = () => wideMQ.matches;
 
@@ -177,7 +177,9 @@
   /* ================= Vẽ ================= */
   function render() {
     const t = todayKey();
-    if (state.goals.date !== t) { state = M.normalizeGoals(state, t); save(); }
+    // ngày đang xem mục tiêu phải nằm trong [hôm nay, hôm nay + 6]
+    const gd = M.daysBetween(t, ui.goalDate);
+    if (gd < 0 || gd >= R.GOAL_PLAN_DAYS) ui.goalDate = t;
     renderTop();
     renderBanner();
     renderSidebar();
@@ -187,12 +189,11 @@
   }
 
   function statsHTML(full) {
-    const bi = M.boxInfo(state);
     const st = M.computeDayStreak(state, todayKey());
     const b = ui.bump ? ' bump' : '';
     return '<div class="stat s-muffin' + b + '"><span class="lbl">' + (full ? 'Muffin Thường' : 'Thường') + '</span><b>' + fmt(state.muffin) + '</b></div>' +
       '<div class="stat s-kho"><span class="lbl">' + (full ? 'Muffin Trong Kho' : 'Trong Kho') + '</span><b>' + fmt(state.kho) + '</b></div>' +
-      '<div class="stat s-cycle"><span class="lbl">Chu Kì</span><b>' + fmt(bi.cycles) + '</b></div>' +
+      '<div class="stat s-cycle"><span class="lbl">Chu Kì</span><b>' + fmt(st.cycles) + '</b></div>' +
       '<div class="stat s-streak"><span class="lbl">Chuỗi Ngày</span><b>🔥' + st.count + '</b></div>';
   }
 
@@ -252,23 +253,96 @@
 
   /* ---------- Thẻ dùng chung ---------- */
   function depositCard() {
-    return '<section class="card"><div class="card-head"><h3>Gửi Muffin Bảo Lưu</h3><span class="pill">Kho: ' + fmt(state.kho) + '</span></div>' +
+    const fi = M.funConvertInfo(state, todayKey());
+    return '<section class="card"><div class="card-head"><h3>Gửi Muffin Bảo Lưu</h3><span class="pill' + (fi.khoOk ? ' kho-ok' : ' kho-need') + '">Hôm nay ' + fi.deposited + '/' + fi.needKho + (fi.khoOk ? ' ✓' : '') + '</span></div>' +
       '<form class="row" data-form="deposit"><input name="n" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Số Muffin" aria-label="Số Muffin gửi vào Kho">' +
       '<button class="btn kho" type="submit">Gửi Kho</button></form>' +
-      '<p class="note">Điểm trong Kho dùng mua đồ ở Shop, KHÔNG đổi ra phút giải trí được.</p></section>';
+      (fi.khoOk ? '' : '<p class="live">Cần gửi thêm <b>' + (fi.needKho - fi.deposited) + '</b> Muffin hôm nay để mở khóa đổi phút giải trí.</p>') +
+      '<p class="note">Điểm trong Kho dùng mua đồ ở Shop, KHÔNG đổi ra phút giải trí được. Kho hiện có <b>' + fmt(state.kho) + '</b> Muffin.</p></section>';
+  }
+
+  // Nhãn ngày ngắn cho dải chọn ngày của mục tiêu
+  function planLabel(d, t) {
+    const diff = M.daysBetween(t, d);
+    return diff === 0 ? 'Nay' : diff === 1 ? 'Mai' : weekday(d);
+  }
+  function goalTitle(d, t) {
+    const diff = M.daysBetween(t, d);
+    return diff === 0 ? 'Mục tiêu hôm nay' : diff === 1 ? 'Mục tiêu ngày mai' : 'Mục tiêu ' + weekday(d) + ', ' + fmtShort(d);
   }
 
   function goalsCard() {
-    const items = state.goals.items;
-    const named = items.filter((g) => g.text).length;
-    const done = items.filter((g) => g.text && g.done).length;
-    return '<section class="card" id="goalsCard"><div class="card-head"><h3>Mục tiêu hôm nay</h3><span class="pill" id="goalCount">' + done + '/' + named + '</span></div>' +
-      '<ul class="goal-list">' + items.map((g, i) =>
+    const t = todayKey();
+    const d = ui.goalDate;
+    const items = M.goalsOf(state, d);
+    const isToday = d === t;
+    const done = items.filter((g) => g.done).length;
+    const strip = M.planDates(t).map((x) => {
+      const n = M.goalsOf(state, x).length;
+      return '<button type="button" class="dchip' + (x === d ? ' on' : '') + '" data-act="goal-day" data-date="' + x + '" aria-pressed="' + (x === d) + '" aria-label="' + esc(goalTitle(x, t)) + ', ' + n + ' mục">' +
+        '<span>' + planLabel(x, t) + '</span><b>' + fmtShort(x).slice(0, 2) + '</b><i>' + (n ? n : '') + '</i></button>';
+    }).join('');
+    // ngày gần nhất trước đó có mục tiêu (để chép)
+    let prev = null;
+    for (let i = 1; i <= 14 && !prev; i++) { const p = M.addDays(d, -i); if (M.goalsOf(state, p).length) prev = p; }
+    let html = '<section class="card" id="goalsCard"><div class="card-head"><h3>' + esc(goalTitle(d, t)) + '</h3>' +
+      (isToday ? '<span class="pill" id="goalCount">' + done + '/' + items.length + '</span>' : '<span class="pill">' + items.length + '/' + R.GOALS_MAX_PER_DAY + '</span>') + '</div>' +
+      '<div class="dstrip" role="group" aria-label="Chọn ngày">' + strip + '</div>';
+    if (items.length) {
+      html += '<ul class="goal-list">' + items.map((g, i) =>
         '<li class="goal' + (g.done ? ' done' : '') + '">' +
-        '<label class="chk"><input type="checkbox" data-goal-check="' + i + '"' + (g.done ? ' checked' : '') + (g.text ? '' : ' disabled') + ' aria-label="Hoàn thành mục tiêu ' + (i + 1) + '"><i></i></label>' +
-        '<input class="goal-text" data-goal-text="' + i + '" value="' + esc(g.text) + '" maxlength="80" placeholder="Mục tiêu ' + (i + 1) + '…" enterkeyhint="done" aria-label="Tên mục tiêu ' + (i + 1) + '">' +
-        (g.text ? '<button class="icon-btn sm" data-act="goal-clear" data-i="' + i + '" aria-label="Xóa mục tiêu ' + (i + 1) + '">' + ICON.trash + '</button>' : '') +
-        '</li>').join('') + '</ul><p class="hint">Chạm vào ô để đặt tên hoặc sửa. Sang ngày mới các ô tự bỏ tick.</p></section>';
+        (isToday
+          ? '<label class="chk"><input type="checkbox" data-goal-check="' + esc(g.id) + '"' + (g.done ? ' checked' : '') + ' aria-label="Hoàn thành: ' + esc(g.text) + '"><i></i></label>'
+          : '<span class="goal-num" aria-hidden="true">' + (i + 1) + '</span>') +
+        '<input class="goal-text" data-goal-edit="' + esc(g.id) + '" value="' + esc(g.text) + '" maxlength="80" enterkeyhint="done" aria-label="Sửa mục tiêu ' + (i + 1) + '">' +
+        '<button class="icon-btn sm" data-act="goal-del" data-id="' + esc(g.id) + '" aria-label="Xóa mục tiêu ' + esc(g.text) + '">' + ICON.trash + '</button>' +
+        '</li>').join('') + '</ul>';
+    } else {
+      html += '<p class="empty-goals">Chưa có mục tiêu cho ngày này.</p>';
+    }
+    if (items.length < R.GOALS_MAX_PER_DAY) {
+      html += '<form class="row goal-add" data-form="goal-add"><input name="text" maxlength="80" autocomplete="off" placeholder="Thêm mục tiêu…" aria-label="Thêm mục tiêu mới" enterkeyhint="done">' +
+        '<button class="btn primary" type="submit" aria-label="Thêm mục tiêu">+</button></form>';
+    }
+    html += '<div class="btn-row goal-tools">' +
+      '<button class="btn soft" data-act="goal-pick"' + (state.tasks.length ? '' : ' disabled') + '>📋 Lấy từ Kho nhiệm vụ</button>' +
+      (prev && !items.length ? '<button class="btn soft" data-act="goal-copy" data-from="' + prev + '">Chép từ ' + esc(planLabel(prev, t) === 'Nay' ? 'hôm nay' : dayLabel(prev).toLowerCase()) + '</button>' : '') +
+      '</div>' +
+      '<p class="hint">' + (isToday ? 'Chạm vào tên để sửa. ' : 'Lên kế hoạch trước; tới ngày đó mới tick được. ') +
+      '<button class="linkish" data-act="go" data-view="tasks">Kho nhiệm vụ (' + state.tasks.length + ')</button></p></section>';
+    return html;
+  }
+
+  // Bảng chọn nhiều nhiệm vụ từ Kho để thêm vào ngày đang chọn
+  async function pickFromBank() {
+    const t = todayKey();
+    const d = ui.goalDate;
+    const have = M.goalsOf(state, d).map((g) => g.text.toLowerCase());
+    const room = R.GOALS_MAX_PER_DAY - have.length;
+    if (room <= 0) return toast('Ngày này đã đủ ' + R.GOALS_MAX_PER_DAY + ' mục tiêu.', 'error');
+    let wrapEl = null;
+    const yes = await confirmBox({
+      title: '📋 Thêm vào ' + goalTitle(d, t).replace('Mục tiêu ', ''),
+      html: '<p class="muted">Chọn nhiệm vụ (còn chỗ cho ' + room + ' mục).</p><ul class="pick-list">' + state.tasks.map((k) => {
+        const exists = have.indexOf(k.text.toLowerCase()) >= 0;
+        return '<li><label class="pick' + (exists ? ' off' : '') + '"><input type="checkbox" value="' + esc(k.id) + '"' + (exists ? ' disabled' : '') + '><span>' + esc(k.text) + (exists ? ' <small>(đã có)</small>' : '') + '</span></label></li>';
+      }).join('') + '</ul>',
+      okLabel: 'Thêm',
+      onMount: (wrap) => {
+        wrapEl = wrap;
+        const btn = wrap.querySelector('[data-m=yes]');
+        const upd = () => {
+          const n = wrap.querySelectorAll('.pick-list input:checked').length;
+          btn.textContent = n ? 'Thêm ' + n + ' mục' : 'Thêm';
+          btn.disabled = n === 0 || n > room;
+        };
+        wrap.addEventListener('change', upd); upd();
+      },
+    });
+    if (!yes || !wrapEl) return;
+    const ids = [...wrapEl.querySelectorAll('.pick-list input:checked')].map((i) => i.value);
+    const res = M.addTasksToDay(state, ids, d, t, ctx());
+    if (commit(res)) toast('Đã thêm ' + res.added + ' mục tiêu' + (res.full ? ' (' + res.full + ' mục không vừa vì đủ 10)' : ''), 'success');
   }
 
   /* ================= CÁC MÀN ================= */
@@ -291,9 +365,14 @@
       '<div class="sum-box"><div class="big">' + fmt(total) + '</div><div class="lbl">phút hôm nay</div></div>' +
       '<div class="sum-box muffin"><div class="big">+' + fmt(day.earned || 0) + ' 🧁</div><div class="lbl">Muffin hôm nay</div></div></div>' +
       '<div class="streak-line">' + (st.todayDone
-        ? '🔥 <b>Chuỗi Ngày ' + st.count + '</b> — hôm nay đã được tính ✓'
+        ? '🔥 <b>Chuỗi Ngày ' + st.count + '/' + R.DAY_STREAK_CYCLE_DAYS + '</b>: hôm nay đã được tính ✓'
         : '🔥 Còn <b>' + need + ' phút</b> nữa để hôm nay được tính vào Chuỗi Ngày' + (st.count ? ' (đang ' + st.count + ' ngày)' : '')) +
-      '<div class="bar"><span style="width:' + pct(total, st.min) + '%"></span></div></div></section>';
+      '<div class="bar"><span style="width:' + pct(total, st.min) + '%"></span></div></div>' +
+      (function () {
+        const fi = M.funConvertInfo(state, t);
+        return '<div class="kho-line' + (fi.khoOk ? ' ok' : '') + '">🏦 Gửi Kho hôm nay: <b>' + fi.deposited + '/' + fi.needKho + '</b>' +
+          (fi.khoOk ? ' ✓ · Đổi phút còn <b>' + fi.leftMin + '</b>/' + fi.maxMin + ' phút' : ' · Gửi đủ mới đổi được phút giải trí') + '</div>';
+      })() + '</section>';
 
     html += '<h2 class="sec-title">Ghi nhận phút</h2>';
     M.CATS.forEach((c) => {
@@ -328,7 +407,7 @@
       '<h2>Hộp Huyền Thoại</h2>' +
       '<div class="box-avail"><b>' + bi.available + '</b> lượt mở sẵn sàng</div>' +
       '<div class="bar lg" role="progressbar" aria-valuemin="0" aria-valuemax="' + bi.per + '" aria-valuenow="' + bi.progress + '" aria-label="Tiến độ hộp tiếp theo"><span style="width:' + pct(bi.progress, bi.per) + '%"></span></div>' +
-      '<div class="bar-text"><span><b>' + bi.progress + '/' + bi.per + '</b> phút học ở nhà</span><span>Chu Kì: <b>' + bi.cycles + '</b></span></div>' +
+      '<div class="bar-text"><span><b>' + bi.progress + '/' + bi.per + '</b> phút học ở nhà</span><span>Đã mở: <b>' + state.boxOpened + '</b> hộp</span></div>' +
       '<button class="btn big" data-act="open-box"' + (bi.available ? '' : ' disabled') + '>' + (bi.available ? 'Mở hộp' : 'Còn ' + (bi.per - bi.progress) + ' phút nữa') + '</button>' +
       '<p class="hint">Mỗi ' + bi.per + ' phút học ở nhà (cộng dồn) = 1 lượt. Mỗi hộp cho ngẫu nhiên ' + odds + ' Muffin thường, cơ hội ngang nhau.</p></section>' +
       '<h2 class="sec-title">Lần mở gần đây</h2>' +
@@ -372,11 +451,18 @@
   VIEWS.shop = function () {
     let html = '';
     if (!isWide()) html += depositCard();
+    const fi = M.funConvertInfo(state, todayKey());
+    const locked = !fi.khoOk || fi.leftMin <= 0;
     html += '<section class="card"><div class="card-head"><h3>Đổi Phút Giải Trí</h3><span class="pill">1 🧁 = ' + R.FUN_MINUTES_PER_MUFFIN + ' phút</span></div>' +
-      '<form class="row" data-form="convert"><input name="n" id="convertInput" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Số Muffin thường" aria-label="Số Muffin thường muốn đổi">' +
-      '<button class="btn primary" type="submit">Đổi</button></form>' +
+      '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + fi.maxMin + '" aria-valuenow="' + fi.converted + '" aria-label="Phút giải trí đã đổi hôm nay"><span style="width:' + pct(fi.converted, fi.maxMin) + '%"></span></div>' +
+      '<div class="bar-text"><span>Hôm nay đã đổi <b>' + fi.converted + '/' + fi.maxMin + '</b> phút</span><span>Còn <b>' + fi.leftMin + '</b> phút</span></div>' +
+      (!fi.khoOk
+        ? '<p class="lock-note">🔒 Gửi đủ <b>' + fi.needKho + '</b> Muffin vào Kho hôm nay để mở khóa (đã gửi ' + fi.deposited + '/' + fi.needKho + ').</p>'
+        : fi.leftMin <= 0 ? '<p class="lock-note">🔒 Hôm nay đã đổi đủ ' + fi.maxMin + ' phút (2 tiếng). Mai đổi tiếp nhé.</p>' : '') +
+      '<form class="row" data-form="convert" style="margin-top:10px"><input name="n" id="convertInput" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Số Muffin thường" aria-label="Số Muffin thường muốn đổi"' + (locked ? ' disabled' : '') + '>' +
+      '<button class="btn primary" type="submit"' + (locked ? ' disabled' : '') + '>Đổi</button></form>' +
       '<div class="live" id="convertPreview"></div>' +
-      '<p class="hint">Chỉ dùng Muffin thường. Phút được cộng vào Quỹ Thời Gian Giải Trí (tab Túi đồ). Muffin trong Kho không đổi được.</p></section>';
+      '<p class="hint">Chỉ dùng Muffin thường. Mỗi ngày đổi tối đa ' + fi.maxMin + ' phút (2 tiếng). Phút được cộng vào Quỹ Thời Gian Giải Trí (tab Túi đồ). Muffin trong Kho không đổi được.</p></section>';
     html += '<section class="card"><p>Số dư để mua: <b>' + fmt(state.kho) + '</b> Kho + <b>' + fmt(state.muffin) + '</b> thường = <b>' + fmt(state.kho + state.muffin) + '</b> 🧁</p>' +
       '<p class="hint">Khi mua, app trừ Muffin trong Kho trước, thiếu thì trừ thêm Muffin thường.</p></section>';
     M.SHOP_GROUPS.forEach((g) => {
@@ -396,10 +482,13 @@
   function updateConvertPreview() {
     const inp = $('#convertInput'), out = $('#convertPreview');
     if (!inp || !out) return;
+    const fi = M.funConvertInfo(state, todayKey());
+    if (!fi.khoOk || fi.leftMin <= 0) { out.innerHTML = ''; return; }
     const r = M.parsePositiveInt(inp.value);
-    if (!inp.value) out.innerHTML = 'Bạn có <b>' + fmt(state.muffin) + '</b> Muffin thường (tối đa <b>' + fmt(state.muffin * R.FUN_MINUTES_PER_MUFFIN) + '</b> phút).';
+    if (!inp.value) out.innerHTML = 'Bạn có <b>' + fmt(state.muffin) + '</b> Muffin thường. Hôm nay đổi được tối đa <b>' + fi.maxMuffin + '</b> Muffin (' + fi.maxMuffin * R.FUN_MINUTES_PER_MUFFIN + ' phút).';
     else if (!r.ok) out.innerHTML = '<span class="li-sub warn">' + esc(r.error) + '</span>';
     else if (r.value > state.muffin) out.innerHTML = '<span class="li-sub warn">Chỉ có ' + fmt(state.muffin) + ' Muffin thường.</span>';
+    else if (r.value * R.FUN_MINUTES_PER_MUFFIN > fi.leftMin) out.innerHTML = '<span class="li-sub warn">Vượt giới hạn hôm nay: chỉ còn đổi được ' + fi.leftMin + ' phút (' + Math.floor(fi.leftMin / R.FUN_MINUTES_PER_MUFFIN) + ' Muffin).</span>';
     else out.innerHTML = '= <b>' + fmt(r.value * R.FUN_MINUTES_PER_MUFFIN) + ' phút</b> giải trí';
   }
 
@@ -415,7 +504,7 @@
       html: '<p>Giá <b>' + it.price + '</b> 🧁. Sẽ trừ ' + parts.join(' + ') + '.</p><p class="muted">Sau khi đổi: Kho còn ' + (state.kho - p.fromKho) + ', thường còn ' + (state.muffin - p.fromMuffin) + '. Món vào Túi Đồ.</p>',
       okLabel: 'Đổi ' + it.price,
     });
-    if (yes) commit(M.buyItem(state, id, ctx()), 'Đã đổi "' + it.name + '" — xem trong Túi đồ');
+    if (yes) commit(M.buyItem(state, id, ctx()), 'Đã đổi "' + it.name + '". Xem trong Túi đồ');
   }
 
   /* ---------- Chuỗi Ngày ---------- */
@@ -424,16 +513,17 @@
     const st = M.computeDayStreak(state, t);
     const ms = M.milestoneStatus(R.DAY_STREAK_REWARDS, st, state.dayStreak.claims);
     const next = ms.find((m) => m.status === 'locked');
-    let html = '<section class="card hero day"><div class="hero-label">🔥 Chuỗi Ngày</div>' +
-      '<div class="hero-num">' + st.count + ' <small>ngày liên tiếp</small></div>' +
-      '<p>' + (st.todayDone ? 'Hôm nay đã được tính ✓ (' + st.todayMinutes + ' phút)' : 'Hôm nay: ' + st.todayMinutes + '/' + st.min + ' phút — ghi đủ ' + st.min + ' phút để giữ chuỗi') + '</p>' +
+    const N = R.DAY_STREAK_CYCLE_DAYS;
+    let html = '<section class="card hero day"><div class="hero-head"><div class="hero-label">🔥 Chuỗi Ngày</div><span class="pill cycle">Chu Kì ' + st.cycles + '</span></div>' +
+      '<div class="hero-num">' + st.count + ' <small>/ ' + N + ' ngày</small></div>' +
+      '<p>' + (st.todayDone ? 'Hôm nay đã được tính ✓ (' + st.todayMinutes + ' phút)' : 'Hôm nay: ' + st.todayMinutes + '/' + st.min + ' phút. Ghi đủ ' + st.min + ' phút để giữ chuỗi.') + '</p>' +
       '<div class="bar"><span style="width:' + pct(st.todayMinutes, st.min) + '%"></span></div>' +
-      (st.runStart ? '<p class="hint">Bắt đầu từ ' + fmtDate(st.runStart) + '.</p>' : '') +
+      (st.runStart ? '<p class="hint">Chu kì này bắt đầu từ ' + fmtDate(st.runStart) + '.' + (st.total > st.count ? ' Tổng chuỗi liên tiếp: ' + st.total + ' ngày.' : '') + '</p>' : '') +
       (next ? '<p class="hint">Mốc tiếp theo: <b>' + next.at + ' ngày</b> → ' + esc(M.rewardText(next.reward)) + ' (còn ' + (next.at - st.count) + ' ngày)</p>' : '') +
       '</section>';
-    html += '<p class="hint" style="margin:10px 4px 0">Chuỗi Ngày tính khi tổng phút ghi nhận trong ngày ≥ ' + st.min + ' phút. Khác với Chuỗi Thói Quen 🌱 (tab Thói quen).</p>';
+    html += '<p class="hint" style="margin:10px 4px 0">Chuỗi Ngày tính khi tổng phút ghi nhận trong ngày ≥ ' + st.min + ' phút. Đi hết ' + N + ' ngày thì Chu Kì +1, ngày ' + (N + 1) + ' quay về ngày 1 và các mốc thưởng nhận lại được. Khác với Chuỗi Thói Quen 🌱 (tab Thói quen).</p>';
     html += '<h2 class="sec-title">Mốc thưởng Chuỗi Ngày</h2><section class="card list">' + ms.map((m) => {
-      const sub = m.status === 'claimed' ? '<span class="li-sub">Đã nhận ✓</span>' : m.status === 'ready' ? '<span class="li-sub good">Đã đạt — nhận ngay!</span>' : '<span class="li-sub">Còn ' + (m.at - st.count) + ' ngày</span>';
+      const sub = m.status === 'claimed' ? '<span class="li-sub">Đã nhận ✓</span>' : m.status === 'ready' ? '<span class="li-sub good">Đã đạt, nhận ngay!</span>' : '<span class="li-sub">Còn ' + (m.at - st.count) + ' ngày</span>';
       return '<div class="li ms ' + m.status + '"><span class="ms-at">' + m.at + '</span><div class="li-main"><b>' + rewardIcon(m.reward) + ' ' + esc(M.rewardText(m.reward)) + '</b>' + sub + '</div>' +
         '<button class="btn sm ' + (m.status === 'ready' ? 'day' : '') + '" data-act="claim-day" data-at="' + m.at + '"' + (m.status === 'ready' ? '' : ' disabled') + '>' + (m.status === 'claimed' ? 'Đã nhận' : 'Nhận') + '</button></div>';
     }).join('') + '</section>';
@@ -510,6 +600,26 @@
     return html;
   };
 
+  /* ---------- Kho nhiệm vụ ---------- */
+  VIEWS.tasks = function () {
+    const t = todayKey();
+    const todayTexts = M.goalsOf(state, t).map((g) => g.text.toLowerCase());
+    let html = pageHead('Kho nhiệm vụ') +
+      '<section class="card"><h3>Thêm vào kho</h3>' +
+      '<form data-form="task-add"><textarea name="text" rows="4" placeholder="Mỗi dòng 1 nhiệm vụ, ví dụ:&#10;Ôn chương 3&#10;Tập gym chân&#10;Đọc 20 trang sách" aria-label="Nhiệm vụ mới, mỗi dòng 1 nhiệm vụ"></textarea>' +
+      '<button class="btn primary block" type="submit" style="margin-top:10px">Thêm vào kho</button></form>' +
+      '<p class="hint">Nhiệm vụ nằm sẵn trong kho để bạn lấy ra làm mục tiêu cho hôm nay hoặc mấy ngày tới (nút 📋 ở thẻ Mục tiêu). Lấy ra rồi vẫn còn trong kho để dùng lại.</p></section>';
+    html += '<h2 class="sec-title">Trong kho · ' + state.tasks.length + ' nhiệm vụ</h2>';
+    if (!state.tasks.length) return html + '<section class="card empty">Kho đang trống. Điền vài nhiệm vụ ở trên nhé.</section>';
+    html += '<section class="card list">' + state.tasks.map((k) => {
+      const inToday = todayTexts.indexOf(k.text.toLowerCase()) >= 0;
+      return '<div class="li task-li"><input class="goal-text" data-task-edit="' + esc(k.id) + '" value="' + esc(k.text) + '" maxlength="80" enterkeyhint="done" aria-label="Sửa nhiệm vụ">' +
+        (inToday ? '<span class="pill kho-ok">Đã có hôm nay</span>' : '<button class="btn sm soft" data-act="task-today" data-id="' + esc(k.id) + '" aria-label="Thêm ' + esc(k.text) + ' vào mục tiêu hôm nay">+ Hôm nay</button>') +
+        '<button class="icon-btn sm danger" data-act="task-del" data-id="' + esc(k.id) + '" aria-label="Xóa nhiệm vụ ' + esc(k.text) + '">' + ICON.trash + '</button></div>';
+    }).join('') + '</section>';
+    return html;
+  };
+
   /* ---------- Thống kê ---------- */
   VIEWS.stats = function () {
     const n = ui.statsRange;
@@ -525,7 +635,7 @@
       '<div class="legend">' + M.CATS.map((c) => '<span><i style="background:' + CAT_COLOR[c] + '"></i>' + M.CAT_SHORT[c] + ' · <b>' + fmt(sum[c]) + '</b></span>').join('') + '</div></section>' +
       '<section class="card"><div class="tiles">' +
       '<div class="tile green"><span class="lbl">Muffin đã kiếm</span><b>+' + fmt(sum.earned) + '</b></div>' +
-      '<div class="tile red"><span class="lbl">Muffin đã tiêu</span><b>−' + fmt(sum.spent) + '</b></div>' +
+      '<div class="tile red"><span class="lbl">Muffin đã tiêu</span><b>-' + fmt(sum.spent) + '</b></div>' +
       '<div class="tile"><span class="lbl">Ngày có ghi nhận</span><b>' + active + '/' + n + '</b></div>' +
       '<div class="tile"><span class="lbl">TB mỗi ngày</span><b>' + fmt(Math.round(sum.total / n)) + ' ph</b></div>' +
       '</div><p class="hint">Từ trước tới nay: kiếm <b>' + fmt(all.earned) + '</b> 🧁, tiêu <b>' + fmt(all.spent) + '</b> 🧁 (tiêu = mua đồ + đổi phút; gửi Kho không tính là tiêu).</p></section>';
@@ -601,24 +711,27 @@
       '<li><b>Muffin Thường</b>: đổi ra phút giải trí (1 🧁 = ' + R.FUN_MINUTES_PER_MUFFIN + ' phút) hoặc mua đồ.</li>' +
       '<li><b>Gửi Kho</b> (một chiều): Muffin trong Kho chỉ dùng mua đồ ở Shop, KHÔNG đổi ra phút giải trí.</li>' +
       '<li><b>Mua đồ</b>: trừ Kho trước, thiếu thì trừ thêm Muffin thường. App hiện trước số bị trừ.</li>' +
-      '<li>Phút giải trí vào <b>Quỹ Thời Gian Giải Trí</b>; tiêu bằng nút “Tiêu Phút” ở Túi đồ.</li></ul></section>' +
+      '<li>Phút giải trí vào <b>Quỹ Thời Gian Giải Trí</b>; tiêu bằng nút “Tiêu Phút” ở Túi đồ.</li>' +
+      '<li><b>Mỗi ngày phải gửi ít nhất ' + R.DAILY_KHO_MIN + ' Muffin vào Kho</b>. Chưa gửi đủ thì chưa đổi được phút giải trí (vẫn mua đồ bình thường).</li>' +
+      '<li><b>Mỗi ngày đổi tối đa ' + R.FUN_CONVERT_MAX_MINUTES_PER_DAY + ' phút giải trí</b> (2 tiếng, tức ' + Math.floor(R.FUN_CONVERT_MAX_MINUTES_PER_DAY / R.FUN_MINUTES_PER_MUFFIN) + ' Muffin). Phút thưởng từ chuỗi không tính vào giới hạn này.</li></ul></section>' +
       '<section class="card"><h3>3. Hộp Huyền Thoại</h3><ul><li>Mỗi ' + R.BOX.HOME_MINUTES_PER_BOX + ' phút <b>học ở nhà</b> (cộng dồn) = 1 lượt mở.</li>' +
-      '<li>Mỗi lượt: ngẫu nhiên ' + R.BOX.REWARDS.map((r) => r.muffin).join(', ') + ' Muffin thường, cơ hội ngang nhau.</li>' +
-      '<li><b>Chu Kì</b> = số lần đủ ' + R.BOX.HOME_MINUTES_PER_BOX + ' phút học ở nhà từ trước tới nay.</li></ul></section>' +
+      '<li>Mỗi lượt: ngẫu nhiên ' + R.BOX.REWARDS.map((r) => r.muffin).join(', ') + ' Muffin thường, cơ hội ngang nhau.</li></ul></section>' +
       '<section class="card"><h3>4. Cửa Hàng</h3>' + tbl(R.SHOP.map((it) => [it.icon + ' ' + esc(it.name), it.price + ' 🧁'])) + '</section>' +
       '<section class="card"><h3>5. 🔥 Chuỗi Ngày</h3><ul>' +
       '<li>Một ngày được tính khi tổng phút ghi nhận (mọi loại) ≥ <b>' + min + ' phút</b> (đổi được trong Cài đặt).</li>' +
       '<li>Ngày tính theo giờ Việt Nam (Asia/Ho_Chi_Minh), qua 0:00 là sang ngày mới.</li>' +
-      '<li>Bỏ lỡ 1 ngày thì chuỗi về 0. Hôm nay chưa đủ thì chuỗi vẫn giữ tới hết ngày.</li></ul>' +
+      '<li>Bỏ lỡ 1 ngày thì chuỗi về 0. Hôm nay chưa đủ thì chuỗi vẫn giữ tới hết ngày.</li>' +
+      '<li><b>Chu Kì</b>: mỗi lần chuỗi đi hết ' + R.DAY_STREAK_CYCLE_DAYS + ' ngày thì Chu Kì +1, ngày thứ ' + (R.DAY_STREAK_CYCLE_DAYS + 1) + ' quay về ngày 1 của chu kì mới và mọi mốc thưởng nhận lại được từ đầu. Chu Kì là tổng số lần đã đi hết ' + R.DAY_STREAK_CYCLE_DAYS + ' ngày, đứt chuỗi cũng không mất.</li></ul>' +
       tbl(R.DAY_STREAK_REWARDS.map((m) => [m.at + ' ngày', esc(M.rewardText(m.reward))])) + '</section>' +
       '<section class="card"><h3>6. 🌱 Chuỗi Thói Quen</h3><ul><li>Mỗi thói quen có chuỗi riêng: tick hoàn thành trong ngày thì +1, bỏ lỡ 1 ngày thì về 0.</li>' +
       '<li>Được tick bù cho hôm qua nếu quên.</li></ul>' +
       tbl(R.HABIT_STREAK_REWARDS.map((m) => [m.at + ' ngày', esc(M.rewardText(m.reward))])) + '</section>' +
       '<section class="card"><h3>7. Nhận thưởng</h3><ul>' +
-      '<li>Mỗi mốc nhận được 1 lần trong một lượt chuỗi. Chuỗi đứt rồi đạt lại thì được nhận lại.</li>' +
+      '<li>Mỗi mốc nhận được 1 lần trong một lượt chuỗi (với Chuỗi Ngày là 1 lần mỗi chu kì). Chuỗi đứt rồi đạt lại thì được nhận lại.</li>' +
       '<li>Thưởng phút → Quỹ Thời Gian Giải Trí. Thưởng là món → Túi Đồ. Muffin từ hộp → Muffin thường.</li></ul></section>' +
       '<section class="card"><h3>8. Mục tiêu, nhật ký, sao lưu</h3><ul>' +
-      '<li>10 ô Mục tiêu hôm nay: đặt tên, sửa, xóa; sang ngày mới tự bỏ tick.</li>' +
+      '<li><b>Mục tiêu</b>: mỗi ngày tối đa ' + R.GOALS_MAX_PER_DAY + ' mục. Chọn ngày ở dải ngày trên thẻ để sửa mục tiêu của hôm nay và ' + (R.GOAL_PLAN_DAYS - 1) + ' ngày tới. Chỉ tick được mục tiêu của hôm nay.</li>' +
+      '<li><b>Kho nhiệm vụ</b>: điền sẵn nhiều nhiệm vụ (mỗi dòng 1 cái), rồi bấm 📋 để lấy ra làm mục tiêu cho ngày đang chọn.</li>' +
       '<li>Mọi hành động đều vào Nhật ký; có Hoàn tác và xóa từng bản ghi (tự cộng/trừ lại điểm).</li>' +
       '<li>Dữ liệu chỉ nằm trên máy này. Nên Xuất JSON ít nhất mỗi tuần (app sẽ nhắc sau ' + R.BACKUP_REMIND_DAYS + ' ngày).</li></ul></section>' +
       '</div>';
@@ -665,12 +778,13 @@
       '<section class="card" style="margin-top:12px"><h3>Muffin</h3>' +
       f('muffin', 'Muffin Thường', state.muffin) + f('kho', 'Muffin Trong Kho', state.kho) + f('fun', 'Quỹ phút giải trí', state.fun, 'phút') + '</section>' +
       '<section class="card" style="margin-top:12px"><h3>Hộp Huyền Thoại</h3>' +
-      f('cycles', 'Chu Kì', bi.cycles, 'Số lần đã đủ 365 phút ở nhà') + f('boxProgress', 'Tiến độ hộp hiện tại', bi.progress, 'phút ở nhà, 0–364') +
-      f('boxPending', 'Lượt mở hộp đang chờ', bi.available, 'không lớn hơn Chu Kì') + '</section>' +
+      f('boxProgress', 'Tiến độ hộp hiện tại', bi.progress, 'phút ở nhà, 0-' + (R.BOX.HOME_MINUTES_PER_BOX - 1)) +
+      f('boxPending', 'Lượt mở hộp đang chờ', bi.available) + '</section>' +
       '<section class="card" style="margin-top:12px"><h3>Phút lẻ đang tích</h3>' +
-      M.CATS.map((c) => f('rem_' + c, M.CAT_LABEL[c], state.acc[c] % R.MINUTES_PER_MUFFIN[c], '0–' + (R.MINUTES_PER_MUFFIN[c] - 1) + ' phút')).join('') + '</section>' +
+      M.CATS.map((c) => f('rem_' + c, M.CAT_LABEL[c], state.acc[c] % R.MINUTES_PER_MUFFIN[c], '0-' + (R.MINUTES_PER_MUFFIN[c] - 1) + ' phút')).join('') + '</section>' +
       '<section class="card" style="margin-top:12px"><h3>🔥 Chuỗi Ngày</h3>' +
-      f('dayStreak', 'Chuỗi ngày hiện tại', st.count) + chk('dayIncludesToday', 'Đã tính cả hôm nay', st.todayDone || st.count === 0) +
+      f('cycles', 'Chu Kì', st.cycles, 'số lần đã đi hết ' + R.DAY_STREAK_CYCLE_DAYS + ' ngày') +
+      f('dayStreak', 'Ngày hiện tại trong chu kì', st.count, '0-' + R.DAY_STREAK_CYCLE_DAYS) + chk('dayIncludesToday', 'Đã tính cả hôm nay', st.todayDone || st.count === 0) +
       f('dayClaimedUpTo', 'Đã nhận thưởng tới mốc', maxClaim(R.DAY_STREAK_REWARDS, st, state.dayStreak.claims), 'VD 10 = đã nhận mốc 5 và 10') + '</section>';
     if (state.habits.length) {
       html += '<section class="card" style="margin-top:12px"><h3>🌱 Chuỗi Thói Quen</h3>' + state.habits.map((h) => {
@@ -751,9 +865,24 @@
         if (yes) { autoBackup('Trước khi xóa thói quen “' + h.name + '”'); commit(M.removeHabit(state, h.id)); toast('Đã xóa thói quen.', 'info'); }
         break;
       }
-      case 'goal-clear': {
-        const res = M.setGoalText(state, parseInt(el.dataset.i, 10), '', t);
-        commit(res);
+      case 'goal-day': ui.goalDate = el.dataset.date; render(); break;
+      case 'goal-del': commit(M.removeGoal(state, ui.goalDate, el.dataset.id, t)); break;
+      case 'goal-copy': {
+        const res = M.copyGoals(state, el.dataset.from, ui.goalDate, t, ctx());
+        if (commit(res)) toast('Đã chép ' + res.added + ' mục tiêu', 'success');
+        break;
+      }
+      case 'goal-pick': pickFromBank(); break;
+      case 'task-today': {
+        const res = M.addTasksToDay(state, [el.dataset.id], t, t, ctx());
+        if (commit(res)) toast('Đã thêm vào mục tiêu hôm nay', 'success');
+        break;
+      }
+      case 'task-del': {
+        const k = state.tasks.find((x) => x.id === el.dataset.id);
+        if (!k) break;
+        const yes = await confirmBox({ title: 'Xóa nhiệm vụ?', html: '<p>Xóa “<b>' + esc(k.text) + '</b>” khỏi Kho nhiệm vụ. Mục tiêu đã thêm vào các ngày vẫn giữ.</p>', okLabel: 'Xóa', danger: true });
+        if (yes) commit(M.removeTask(state, k.id));
         break;
       }
       case 'dismiss-welcome': state.meta.welcomeDismissed = true; save(); render(); break;
@@ -781,7 +910,7 @@
         try {
           const data = M.migrate(b.data, Date.now());
           autoBackup('Trước khi khôi phục bản sao');
-          state = M.normalizeGoals(data, t); save(); render(); toast('Đã khôi phục.', 'success');
+          state = M.pruneGoalDays(data, t); save(); render(); toast('Đã khôi phục.', 'success');
         } catch (e) { toast('Bản sao lưu bị lỗi: ' + e.message, 'error'); }
         break;
       }
@@ -824,6 +953,16 @@
     } else if (kind === 'streak-min') {
       const r = readInt(inp, { max: 1440, maxMsg: 'Tối đa 1440 phút.' });
       if (r.ok) { state.settings.streakMin = r.value; save(); render(); toast('Ngưỡng Chuỗi Ngày: ' + r.value + ' phút', 'success'); }
+    } else if (kind === 'goal-add') {
+      const res = M.addGoals(state, ui.goalDate, [inp.value], todayKey(), ctx());
+      if (commit(res)) {
+        const ni = $('#goalsCard form[data-form="goal-add"] input');
+        if (ni) ni.focus();
+      }
+    } else if (kind === 'task-add') {
+      const ta = form.querySelector('textarea');
+      const res = M.addTasks(state, ta.value, ctx());
+      if (commit(res)) toast('Đã thêm ' + res.added + ' nhiệm vụ vào kho' + (res.dup ? ' (bỏ qua ' + res.dup + ' mục trùng)' : ''), 'success');
     } else if (kind === 'setup') {
       submitSetup(form);
     }
@@ -866,36 +1005,35 @@
     const t = todayKey();
     const chk = ev.target.closest('[data-goal-check]');
     if (chk) {
-      const res = M.toggleGoal(state, parseInt(chk.dataset.goalCheck, 10), t);
-      if (!res.ok) { chk.checked = false; return toast(res.error, 'error'); }
+      const res = M.toggleGoal(state, ui.goalDate, chk.dataset.goalCheck, t);
+      if (!res.ok) { chk.checked = !chk.checked; return toast(res.error, 'error'); }
       state = res.state; save();
       chk.closest('.goal').classList.toggle('done', chk.checked);
       refreshGoalCount();
       return;
     }
-    const txt = ev.target.closest('[data-goal-text]');
+    const txt = ev.target.closest('[data-goal-edit]');
     if (txt) {
-      const i = parseInt(txt.dataset.goalText, 10);
-      const res = M.setGoalText(state, i, txt.value, t);
+      const res = M.editGoal(state, ui.goalDate, txt.dataset.goalEdit, txt.value, t);
       if (!res.ok) return toast(res.error, 'error');
       state = res.state; save();
-      const li = txt.closest('.goal');
-      const c = li.querySelector('[data-goal-check]');
-      c.disabled = !state.goals.items[i].text;
-      if (!state.goals.items[i].text) { c.checked = false; li.classList.remove('done'); }
-      if (state.goals.items[i].text && !li.querySelector('[data-act=goal-clear]')) {
-        li.insertAdjacentHTML('beforeend', '<button class="icon-btn sm" data-act="goal-clear" data-i="' + i + '" aria-label="Xóa mục tiêu ' + (i + 1) + '">' + ICON.trash + '</button>');
-      }
-      refreshGoalCount();
+      if (!M.goalsOf(state, ui.goalDate).some((g) => g.id === txt.dataset.goalEdit)) render();
+      return;
+    }
+    const tk = ev.target.closest('[data-task-edit]');
+    if (tk) {
+      const res = M.editTask(state, tk.dataset.taskEdit, tk.value);
+      if (!res.ok) { toast(res.error, 'error'); render(); return; }
+      state = res.state; save();
     }
   });
   document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' && ev.target.matches && ev.target.matches('[data-goal-text]')) { ev.preventDefault(); ev.target.blur(); }
+    if (ev.key === 'Enter' && ev.target.matches && ev.target.matches('[data-goal-edit],[data-task-edit]')) { ev.preventDefault(); ev.target.blur(); }
   });
   function refreshGoalCount() {
-    const items = state.goals.items;
+    const items = M.goalsOf(state, ui.goalDate);
     const el = $('#goalCount');
-    if (el) el.textContent = items.filter((g) => g.text && g.done).length + '/' + items.filter((g) => g.text).length;
+    if (el) el.textContent = items.filter((g) => g.done).length + '/' + items.length;
   }
   document.addEventListener('input', (ev) => { if (ev.target.id === 'convertInput') updateConvertPreview(); });
 
@@ -939,7 +1077,7 @@
     });
     if (!yes) return;
     autoBackup('Trước khi nhập JSON');
-    state = M.normalizeGoals(s, todayKey()); save(); go('today');
+    state = M.pruneGoalDays(s, todayKey()); save(); go('today');
     toast('Đã nhập dữ liệu ✓', 'success');
   });
 
@@ -962,7 +1100,7 @@
   // Sang ngày mới khi app đang mở: vẽ lại (mục tiêu tự bỏ tick, chuỗi cập nhật)
   function checkDay() {
     const t = todayKey();
-    if (t !== lastToday) { lastToday = t; state = M.normalizeGoals(state, t); save(); if (!modalOpen) render(); }
+    if (t !== lastToday) { lastToday = t; state = M.pruneGoalDays(state, t); save(); if (!modalOpen) render(); }
   }
   setInterval(checkDay, 30000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDay(); });

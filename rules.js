@@ -1,5 +1,5 @@
 /*
- * Muffin Study Game — LUẬT CHƠI + HÀM THUẦN
+ * Muffin Study Game: LUẬT CHƠI + HÀM THUẦN
  * ------------------------------------------------------------------
  * File này KHÔNG đụng tới DOM hay localStorage, để chạy được cả trong
  * trình duyệt lẫn Node (tests/run-tests.js).
@@ -17,7 +17,7 @@
   'use strict';
 
   /* ================================================================
-   * RULES — SỐ LIỆU BẮT BUỘC GIỮ NGUYÊN (không đổi, không làm tròn)
+   * RULES: SỐ LIỆU BẮT BUỘC GIỮ NGUYÊN (không đổi, không làm tròn)
    * ================================================================ */
   const RULES = {
     // Quy đổi phút → Muffin thường: cần bao nhiêu phút cho 1 Muffin
@@ -43,7 +43,7 @@
       ],
     },
 
-    // Cửa Hàng: tên món – giá Muffin. group: small = Giải trí nhỏ, shopping = Mua sắm, big = Trải nghiệm lớn
+    // Cửa Hàng: tên món - giá Muffin. group: small = Giải trí nhỏ, shopping = Mua sắm, big = Trải nghiệm lớn
     // bagName: tên thẻ hiện trong Túi Đồ.
     SHOP: [
       { id: 'cafe',   name: 'Đi cafe học',     bagName: 'Đi Cafe Học',     price: 55,   group: 'small',    icon: '☕' },
@@ -118,8 +118,19 @@
     MAX_MINUTES_PER_ENTRY: 600,
     // Nhắc sao lưu nếu quá 7 ngày chưa xuất JSON.
     BACKUP_REMIND_DAYS: 7,
-    // Số mục tiêu hôm nay.
-    GOAL_SLOTS: 10,
+    // Chu Kì: mỗi lần Chuỗi Ngày đi hết 75 ngày thì Chu Kì +1,
+    // ngày thứ 76 quay về ngày 1 và các mốc thưởng 5 → 75 nhận lại được.
+    DAY_STREAK_CYCLE_DAYS: 75,
+    // Mỗi ngày chỉ được đổi tối đa 120 phút giải trí (2 tiếng) từ Muffin thường.
+    // (Phút thưởng từ chuỗi không tính vào giới hạn này.)
+    FUN_CONVERT_MAX_MINUTES_PER_DAY: 120,
+    // Mỗi ngày phải gửi đủ 5 Muffin vào Kho thì mới được đổi phút giải trí hôm đó.
+    DAILY_KHO_MIN: 5,
+    // Mục tiêu: tối đa 10 mục mỗi ngày, lên kế hoạch được cho hôm nay và 6 ngày tới.
+    GOALS_MAX_PER_DAY: 10,
+    GOAL_PLAN_DAYS: 7,
+    // Kho nhiệm vụ: tối đa 300 nhiệm vụ.
+    TASK_BANK_MAX: 300,
     // Giữ tối đa bấy nhiêu bản ghi nhật ký (cũ hơn thì không hoàn tác được nữa).
     LOG_MAX: 3000,
   };
@@ -135,7 +146,7 @@
   const ITEM = {};
   RULES.SHOP.forEach((it) => { ITEM[it.id] = it; });
 
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
   const DAY_MS = 86400000;
 
   /* ================================================================
@@ -174,7 +185,8 @@
     return { ok: true, value: v };
   }
 
-  function emptyDay() { return { home: 0, class: 0, work: 0, gym: 0, earned: 0, spent: 0 }; }
+  // deposited: Muffin đã gửi Kho trong ngày; conv: phút giải trí đã đổi trong ngày
+  function emptyDay() { return { home: 0, class: 0, work: 0, gym: 0, earned: 0, spent: 0, deposited: 0, conv: 0 }; }
   function ensureDay(s, key) {
     if (!s.days[key]) s.days[key] = emptyDay();
     return s.days[key];
@@ -186,12 +198,6 @@
     const inv = {};
     RULES.SHOP.forEach((it) => { inv[it.id] = 0; });
     return inv;
-  }
-
-  function emptyGoals(today) {
-    const items = [];
-    for (let i = 0; i < RULES.GOAL_SLOTS; i++) items.push({ text: '', done: false });
-    return { date: today, items: items };
   }
 
   /* ================================================================
@@ -207,13 +213,15 @@
       fun: 0,          // Quỹ Thời Gian Giải Trí (phút)
       // Phút cộng dồn của từng loại, dùng để quy đổi. Phút lẻ = acc % tỷ lệ (giữ lại, không mất).
       acc: { home: 0, class: 0, work: 0, gym: 0 },
-      boxAcc: 0,       // Tổng phút học ở nhà tính cho Hộp Huyền Thoại (Chu Kì = floor(boxAcc/365))
+      boxAcc: 0,       // Tổng phút học ở nhà tính cho Hộp Huyền Thoại (365 phút = 1 lượt)
       boxOpened: 0,    // Số lượt hộp đã mở
       inventory: emptyInventory(),
-      days: {},        // { 'YYYY-MM-DD': { home, class, work, gym, earned, spent } }
-      dayStreak: { anchor: null, claims: [] }, // anchor: { count, endDate } từ số dư ban đầu
+      days: {},        // { 'YYYY-MM-DD': { home, class, work, gym, earned, spent, deposited, conv } }
+      // anchor: { count, endDate } từ số dư ban đầu; cycleBase: số Chu Kì khai từ bản cũ
+      dayStreak: { anchor: null, claims: [], cycleBase: 0 },
       habits: [],      // [{ id, name, createdAt, done: ['YYYY-MM-DD'], anchor, claims: [] }]
-      goals: emptyGoals(dateKey(now)),
+      goalDays: {},    // Mục tiêu theo ngày: { 'YYYY-MM-DD': [{ id, text, done }] }
+      tasks: [],       // Kho nhiệm vụ: [{ id, text }]
       log: [],
       settings: { streakMin: RULES.STREAK_MIN_MINUTES },
       meta: { lastExport: null, setupDone: false, welcomeDismissed: false },
@@ -241,7 +249,18 @@
     const s = clone(raw);
     const v = s.schemaVersion || 0;
     if (v > SCHEMA_VERSION) throw new Error('Dữ liệu được tạo từ phiên bản app mới hơn.');
-    // v0 -> v1: chưa có bản phát hành nào trước v1; chỉ cần điền mặc định.
+    // v1 -> v2: 10 ô mục tiêu cố định → mục tiêu theo ngày; thêm Kho nhiệm vụ; Chu Kì theo chuỗi 75 ngày.
+    if (v < 2) {
+      const g = s.goals;
+      s.goalDays = s.goalDays || {};
+      if (g && Array.isArray(g.items)) {
+        const t = dateKey(now || Date.now());
+        const items = g.items.filter((x) => x && x.text).map((x, i) => ({ id: 'm' + i + '_' + (now || 0), text: String(x.text), done: g.date === t ? !!x.done : false }));
+        if (items.length) s.goalDays[t] = items;
+      }
+      delete s.goals;
+      if (s.dayStreak && s.dayStreak.cycleBase == null) s.dayStreak.cycleBase = 0;
+    }
     fillDefaults(s, createInitialState(now || s.createdAt || Date.now()));
     s.schemaVersion = SCHEMA_VERSION;
     // Bảo đảm kiểu dữ liệu tối thiểu
@@ -252,8 +271,10 @@
     Object.keys(s.inventory).forEach((k) => { if (!isNonNegInt(s.inventory[k])) throw new Error('Túi đồ không hợp lệ.'); });
     if (!Array.isArray(s.log) || !Array.isArray(s.habits)) throw new Error('Nhật ký / thói quen không hợp lệ.');
     s.habits.forEach((h) => { fillDefaults(h, { done: [], anchor: null, claims: [] }); });
-    if (!Array.isArray(s.goals.items)) s.goals = emptyGoals(dateKey(now || Date.now()));
-    while (s.goals.items.length < RULES.GOAL_SLOTS) s.goals.items.push({ text: '', done: false });
+    if (!s.goalDays || typeof s.goalDays !== 'object' || Array.isArray(s.goalDays)) throw new Error('Mục tiêu không hợp lệ.');
+    Object.keys(s.goalDays).forEach((d) => { if (!Array.isArray(s.goalDays[d])) throw new Error('Mục tiêu ngày ' + d + ' không hợp lệ.'); });
+    if (!Array.isArray(s.tasks)) throw new Error('Kho nhiệm vụ không hợp lệ.');
+    if (!isNonNegInt(s.dayStreak.cycleBase)) throw new Error('Chu Kì không hợp lệ.');
     return s;
   }
 
@@ -305,19 +326,45 @@
     const s = clone(state);
     s.muffin -= amount; s.kho += amount;
     const entry = baseEntry('deposit', ctx); entry.amount = amount;
+    const day = ensureDay(s, entry.date);
+    day.deposited = (day.deposited || 0) + amount;
     pushLog(s, entry);
     return ok(s, entry);
+  }
+
+  // Tình trạng đổi phút giải trí trong ngày: đã gửi Kho bao nhiêu, đã đổi bao nhiêu phút, còn đổi được bao nhiêu
+  function funConvertInfo(state, today) {
+    const day = state.days[today] || {};
+    const deposited = day.deposited || 0;
+    const converted = day.conv || 0;
+    const maxMin = RULES.FUN_CONVERT_MAX_MINUTES_PER_DAY;
+    const leftMin = Math.max(0, maxMin - converted);
+    const per = RULES.FUN_MINUTES_PER_MUFFIN;
+    return {
+      deposited: deposited, needKho: RULES.DAILY_KHO_MIN, khoOk: deposited >= RULES.DAILY_KHO_MIN,
+      converted: converted, maxMin: maxMin, leftMin: leftMin,
+      maxMuffin: Math.min(state.muffin, Math.floor(leftMin / per)), // số Muffin còn đổi được hôm nay
+    };
   }
 
   // Đổi Muffin thường → phút giải trí (Kho không dùng được ở đây)
   function convertFun(state, amount, ctx) {
     if (!Number.isInteger(amount) || amount <= 0) return fail('Số Muffin phải là số nguyên dương.');
+    const info = funConvertInfo(state, dateKey(ctx.now));
+    if (!info.khoOk) return fail('Hôm nay cần gửi đủ ' + info.needKho + ' Muffin vào Kho trước khi đổi phút (đã gửi ' + info.deposited + '/' + info.needKho + ').');
     if (amount > state.muffin) return fail('Bạn chỉ có ' + state.muffin + ' Muffin thường (Muffin trong Kho không đổi ra phút được).');
-    const s = clone(state);
     const minutes = amount * RULES.FUN_MINUTES_PER_MUFFIN;
+    if (minutes > info.leftMin) {
+      return fail(info.leftMin <= 0
+        ? 'Hôm nay đã đổi đủ ' + info.maxMin + ' phút giải trí. Mai đổi tiếp nhé.'
+        : 'Mỗi ngày chỉ đổi tối đa ' + info.maxMin + ' phút. Hôm nay còn đổi được ' + info.leftMin + ' phút (' + Math.floor(info.leftMin / RULES.FUN_MINUTES_PER_MUFFIN) + ' Muffin).');
+    }
+    const s = clone(state);
     s.muffin -= amount; s.fun += minutes;
     const entry = baseEntry('convert', ctx); entry.amount = amount; entry.minutes = minutes;
-    ensureDay(s, entry.date).spent += amount;
+    const day = ensureDay(s, entry.date);
+    day.spent += amount;
+    day.conv = (day.conv || 0) + minutes;
     pushLog(s, entry);
     return ok(s, entry);
   }
@@ -370,7 +417,7 @@
   /* ---------- Hộp Huyền Thoại ---------- */
   function boxInfo(state) {
     const per = RULES.BOX.HOME_MINUTES_PER_BOX;
-    const cycles = Math.floor(state.boxAcc / per); // Chu Kì
+    const cycles = Math.floor(state.boxAcc / per); // tổng số lượt hộp đã tích (không phải Chu Kì)
     return { cycles: cycles, available: Math.max(0, cycles - state.boxOpened), progress: state.boxAcc % per, per: per };
   }
 
@@ -418,14 +465,48 @@
     return Number.isInteger(v) && v > 0 ? v : RULES.STREAK_MIN_MINUTES;
   }
 
-  // Chuỗi Ngày: ngày được tính khi tổng phút ghi nhận >= ngưỡng
+  // Số Chu Kì đã hoàn thành trong lịch sử: mỗi đoạn chuỗi liên tiếp dài L ngày cho floor(L / 75) Chu Kì
+  function completedCycles(state, min) {
+    const N = RULES.DAY_STREAK_CYCLE_DAYS;
+    const set = {};
+    Object.keys(state.days).forEach((d) => { if (dayTotal(state.days[d]) >= min) set[d] = true; });
+    const a = state.dayStreak && state.dayStreak.anchor;
+    if (a && a.count > 0) for (let i = 0; i < a.count; i++) set[addDays(a.endDate, -i)] = true;
+    const list = Object.keys(set).sort();
+    let total = 0, len = 0, prev = null;
+    list.forEach((d) => {
+      len = prev && addDays(prev, 1) === d ? len + 1 : 1;
+      if (len % N === 0) total++;
+      prev = d;
+    });
+    return total;
+  }
+
+  /**
+   * Chuỗi Ngày: ngày được tính khi tổng phút ghi nhận >= ngưỡng.
+   * Chuỗi chạy theo Chu Kì 75 ngày: ngày 76 quay về ngày 1 của chu kì mới.
+   * Trả về:
+   *   count     ngày thứ mấy trong chu kì hiện tại (0..75), dùng cho mốc thưởng
+   *   runStart  ngày bắt đầu chu kì hiện tại (mốc đã nhận gắn với ngày này)
+   *   total     tổng số ngày liên tiếp (không chia chu kì)
+   *   cycles    Chu Kì = số lần đã đi hết 75 ngày từ trước tới nay (cả bản cũ)
+   */
   function computeDayStreak(state, today) {
     const min = streakMin(state);
+    const N = RULES.DAY_STREAK_CYCLE_DAYS;
     const anchor = state.dayStreak && state.dayStreak.anchor;
     const r = countRun((d) => dayTotal(state.days[d]) >= min || anchorCovers(anchor, d), today);
-    r.todayMinutes = dayTotal(state.days[today]);
-    r.min = min;
-    return r;
+    const idx = r.count > 0 ? Math.floor((r.count - 1) / N) : 0;
+    return {
+      count: r.count - idx * N,
+      runStart: r.runStart ? addDays(r.runStart, idx * N) : null,
+      total: r.count,
+      fullRunStart: r.runStart,
+      todayDone: r.todayDone,
+      todayMinutes: dayTotal(state.days[today]),
+      min: min,
+      cycles: ((state.dayStreak && state.dayStreak.cycleBase) || 0) + completedCycles(state, min),
+    };
   }
 
   // Chuỗi Thói Quen của 1 thói quen
@@ -531,31 +612,136 @@
     return ok(s);
   }
 
-  /* ---------- Mục tiêu hôm nay ---------- */
-  // Sang ngày mới thì tự bỏ tick (giữ tên mục tiêu)
-  function normalizeGoals(state, today) {
-    if (state.goals && state.goals.date === today) return state;
-    const s = clone(state);
-    if (!s.goals || !Array.isArray(s.goals.items)) s.goals = emptyGoals(today);
-    s.goals.date = today;
-    s.goals.items.forEach((g) => { g.done = false; });
-    return s;
+  /* ---------- Mục tiêu theo ngày ---------- */
+  // Mỗi ngày có danh sách mục tiêu riêng (tối đa 10). Sang ngày mới là danh sách mới, tick cũ không mang theo.
+  // Sửa được mục tiêu của hôm nay và 6 ngày tới; chỉ tick được mục tiêu của hôm nay.
+  function goalsOf(state, date) { return (state.goalDays && state.goalDays[date]) || []; }
+  function planDates(today) {
+    const out = [];
+    for (let i = 0; i < RULES.GOAL_PLAN_DAYS; i++) out.push(addDays(today, i));
+    return out;
   }
-  function setGoalText(state, idx, text, today) {
-    const s = normalizeGoals(clone(state), today);
-    if (!s.goals.items[idx]) return fail('Ô mục tiêu không hợp lệ.');
-    const t = String(text || '').trim().slice(0, 80);
-    s.goals.items[idx].text = t;
-    if (!t) s.goals.items[idx].done = false;
+  function checkPlanDate(date, today) {
+    const diff = daysBetween(today, date);
+    if (diff < 0) return 'Không sửa được mục tiêu của ngày đã qua.';
+    if (diff >= RULES.GOAL_PLAN_DAYS) return 'Chỉ lên kế hoạch được tới ' + (RULES.GOAL_PLAN_DAYS - 1) + ' ngày tới.';
+    return null;
+  }
+  function cleanText(text, max) { return String(text || '').replace(/\s+/g, ' ').trim().slice(0, max || 80); }
+  function sameText(a, b) { return a.toLowerCase() === b.toLowerCase(); }
+
+  // Thêm nhiều mục tiêu vào 1 ngày (bỏ qua mục trùng tên đã có trong ngày đó)
+  function addGoals(state, date, texts, today, ctx) {
+    const err = checkPlanDate(date, today);
+    if (err) return fail(err);
+    const s = clone(state);
+    const list = s.goalDays[date] ? s.goalDays[date] : (s.goalDays[date] = []);
+    let added = 0, dup = 0, full = 0;
+    (Array.isArray(texts) ? texts : [texts]).forEach((raw, i) => {
+      const t = cleanText(raw);
+      if (!t) return;
+      if (list.some((g) => sameText(g.text, t))) { dup++; return; }
+      if (list.length >= RULES.GOALS_MAX_PER_DAY) { full++; return; }
+      list.push({ id: (ctx.id || ('g' + ctx.now)) + '_' + i, text: t, done: false });
+      added++;
+    });
+    if (!list.length) delete s.goalDays[date];
+    if (!added) {
+      if (full) return fail('Mỗi ngày tối đa ' + RULES.GOALS_MAX_PER_DAY + ' mục tiêu.');
+      if (dup) return fail('Mục tiêu này đã có trong ngày.');
+      return fail('Hãy nhập tên mục tiêu.');
+    }
+    const r = ok(s);
+    r.added = added; r.dup = dup; r.full = full;
+    return r;
+  }
+  function editGoal(state, date, goalId, text, today) {
+    const err = checkPlanDate(date, today);
+    if (err) return fail(err);
+    const s = clone(state);
+    const list = s.goalDays[date] || [];
+    const g = list.find((x) => x.id === goalId);
+    if (!g) return fail('Không tìm thấy mục tiêu.');
+    const t = cleanText(text);
+    if (!t) return removeGoal(state, date, goalId, today);
+    g.text = t;
     return ok(s);
   }
-  function toggleGoal(state, idx, today) {
-    const s = normalizeGoals(clone(state), today);
-    const g = s.goals.items[idx];
-    if (!g) return fail('Ô mục tiêu không hợp lệ.');
-    if (!g.text) return fail('Hãy đặt tên mục tiêu trước.');
+  function removeGoal(state, date, goalId, today) {
+    const err = checkPlanDate(date, today);
+    if (err) return fail(err);
+    const s = clone(state);
+    const list = s.goalDays[date] || [];
+    const i = list.findIndex((x) => x.id === goalId);
+    if (i < 0) return fail('Không tìm thấy mục tiêu.');
+    list.splice(i, 1);
+    if (!list.length) delete s.goalDays[date];
+    return ok(s);
+  }
+  function toggleGoal(state, date, goalId, today) {
+    if (date !== today) return fail('Chỉ tick được mục tiêu của hôm nay.');
+    const s = clone(state);
+    const g = (s.goalDays[date] || []).find((x) => x.id === goalId);
+    if (!g) return fail('Không tìm thấy mục tiêu.');
     g.done = !g.done;
     return ok(s);
+  }
+  // Chép tên các mục tiêu từ một ngày sang ngày khác (không chép dấu tick)
+  function copyGoals(state, fromDate, toDate, today, ctx) {
+    const texts = goalsOf(state, fromDate).map((g) => g.text);
+    if (!texts.length) return fail('Ngày đó không có mục tiêu để chép.');
+    return addGoals(state, toDate, texts, today, ctx);
+  }
+  // Dọn mục tiêu cũ hơn 60 ngày cho gọn bộ nhớ
+  function pruneGoalDays(state, today) {
+    const old = Object.keys(state.goalDays || {}).filter((d) => daysBetween(d, today) > 60);
+    if (!old.length) return state;
+    const s = clone(state);
+    old.forEach((d) => { delete s.goalDays[d]; });
+    return s;
+  }
+
+  /* ---------- Kho nhiệm vụ ---------- */
+  // Thêm nhiều nhiệm vụ một lúc (mỗi dòng 1 nhiệm vụ), bỏ dòng trống và dòng trùng
+  function addTasks(state, texts, ctx) {
+    const s = clone(state);
+    let added = 0, dup = 0;
+    const lines = Array.isArray(texts) ? texts : String(texts || '').split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const t = cleanText(lines[i]);
+      if (!t) continue;
+      if (s.tasks.some((x) => sameText(x.text, t))) { dup++; continue; }
+      if (s.tasks.length >= RULES.TASK_BANK_MAX) return fail('Kho nhiệm vụ tối đa ' + RULES.TASK_BANK_MAX + ' mục.');
+      s.tasks.push({ id: (ctx.id || ('t' + ctx.now)) + '_' + i, text: t });
+      added++;
+    }
+    if (!added) return fail(dup ? 'Các nhiệm vụ này đã có trong kho.' : 'Hãy nhập ít nhất 1 nhiệm vụ.');
+    const r = ok(s);
+    r.added = added; r.dup = dup;
+    return r;
+  }
+  function editTask(state, taskId, text) {
+    const t = cleanText(text);
+    if (!t) return fail('Tên nhiệm vụ không được để trống.');
+    const s = clone(state);
+    const x = s.tasks.find((k) => k.id === taskId);
+    if (!x) return fail('Không tìm thấy nhiệm vụ.');
+    if (s.tasks.some((k) => k.id !== taskId && sameText(k.text, t))) return fail('Kho đã có nhiệm vụ này.');
+    x.text = t;
+    return ok(s);
+  }
+  function removeTask(state, taskId) {
+    const s = clone(state);
+    const n = s.tasks.length;
+    s.tasks = s.tasks.filter((k) => k.id !== taskId);
+    if (s.tasks.length === n) return fail('Không tìm thấy nhiệm vụ.');
+    return ok(s);
+  }
+  // Đưa nhiệm vụ từ Kho vào mục tiêu của một ngày (nhiệm vụ vẫn ở lại trong Kho để dùng lại)
+  function addTasksToDay(state, taskIds, date, today, ctx) {
+    const texts = taskIds.map((id) => (state.tasks.find((k) => k.id === id) || {}).text).filter(Boolean);
+    if (!texts.length) return fail('Hãy chọn ít nhất 1 nhiệm vụ.');
+    return addGoals(state, date, texts, today, ctx);
   }
 
   /* ================================================================
@@ -584,12 +770,16 @@
       case 'deposit':
         if (s.kho < e.amount) return 'Kho chỉ còn ' + s.kho + ' Muffin, không đủ để rút lại ' + e.amount + '.';
         s.kho -= e.amount; s.muffin += e.amount;
+        clampDown(ensureDay(s, e.date), 'deposited', e.amount);
         return null;
-      case 'convert':
+      case 'convert': {
         if (s.fun < e.minutes) return 'Quỹ giải trí chỉ còn ' + s.fun + ' phút, không đủ trừ lại ' + e.minutes + ' phút.';
         s.fun -= e.minutes; s.muffin += e.amount;
-        clampDown(ensureDay(s, e.date), 'spent', e.amount);
+        const day = ensureDay(s, e.date);
+        clampDown(day, 'spent', e.amount);
+        clampDown(day, 'conv', e.minutes);
         return null;
+      }
       case 'buy':
         if (!(s.inventory[e.item] > 0)) return 'Món "' + ITEM[e.item].bagName + '" đã được dùng, không hoàn tác được.';
         s.inventory[e.item] -= 1; s.kho += e.fromKho; s.muffin += e.fromMuffin;
@@ -657,7 +847,7 @@
       case 'log': return 'Ghi ' + e.minutes + ' phút ' + CAT_LABEL[e.cat] + ' → +' + e.gained + ' 🧁' + (e.boxGained ? ' · +' + e.boxGained + ' lượt hộp' : '');
       case 'deposit': return 'Gửi ' + e.amount + ' Muffin vào Kho';
       case 'convert': return 'Đổi ' + e.amount + ' Muffin → ' + e.minutes + ' phút giải trí';
-      case 'buy': return 'Đổi "' + ITEM[e.item].name + '" (Kho −' + e.fromKho + ', Thường −' + e.fromMuffin + ')';
+      case 'buy': return 'Đổi "' + ITEM[e.item].name + '" (Kho -' + e.fromKho + ', Thường -' + e.fromMuffin + ')';
       case 'use': return 'Dùng "' + ITEM[e.item].bagName + '"';
       case 'spendFun': return 'Tiêu ' + e.minutes + ' phút giải trí';
       case 'box': return 'Mở Hộp Huyền Thoại → +' + e.reward + ' 🧁';
@@ -669,7 +859,7 @@
 
   /* ================================================================
    * Số dư ban đầu (chuyển từ bản cũ)
-   * input: { muffin, kho, fun, cycles, boxProgress, boxPending, rem:{home,class,work,gym},
+   * input: { muffin, kho, fun, cycles (Chu Kì = số lần đi hết 75 ngày), boxProgress, boxPending, rem:{home,class,work,gym},
    *          dayStreak, dayIncludesToday, dayClaimedUpTo, inventory:{id:n},
    *          habits: { [id]: { streak, includesToday, claimedUpTo } } }
    * Ghi đè số dư, xóa nhật ký hoàn tác (vì số dư đã thay mới).
@@ -679,8 +869,9 @@
     const fields = ['muffin', 'kho', 'fun', 'cycles', 'boxProgress', 'boxPending', 'dayStreak', 'dayClaimedUpTo'];
     for (const f of fields) if (!isNonNegInt(n(input[f]))) return fail('Ô "' + f + '" phải là số nguyên ≥ 0.');
     const per = RULES.BOX.HOME_MINUTES_PER_BOX;
+    const N = RULES.DAY_STREAK_CYCLE_DAYS;
     if (n(input.boxProgress) >= per) return fail('Tiến độ hộp phải nhỏ hơn ' + per + ' phút.');
-    if (n(input.boxPending) > n(input.cycles)) return fail('Lượt hộp chưa mở không thể lớn hơn Chu Kì.');
+    if (n(input.dayStreak) > N) return fail('Ngày trong chu kì chỉ từ 0 đến ' + N + '.');
     const s = clone(state);
     s.muffin = n(input.muffin); s.kho = n(input.kho); s.fun = n(input.fun);
     const rem = input.rem || {};
@@ -689,8 +880,9 @@
       if (!isNonNegInt(r) || r >= RULES.MINUTES_PER_MUFFIN[c]) return fail('Phút lẻ "' + CAT_LABEL[c] + '" phải từ 0 đến ' + (RULES.MINUTES_PER_MUFFIN[c] - 1) + '.');
       s.acc[c] = r;
     }
-    s.boxAcc = n(input.cycles) * per + n(input.boxProgress);
-    s.boxOpened = n(input.cycles) - n(input.boxPending);
+    // Hộp: lượt đang chờ + tiến độ phút ở nhà
+    s.boxAcc = n(input.boxPending) * per + n(input.boxProgress);
+    s.boxOpened = 0;
     const inv = input.inventory || {};
     for (const it of RULES.SHOP) {
       const v = n(inv[it.id]);
@@ -699,7 +891,13 @@
     }
     // Chuỗi ngày
     const ds = n(input.dayStreak);
-    s.dayStreak = { anchor: ds > 0 ? { count: ds, endDate: input.dayIncludesToday ? today : addDays(today, -1) } : null, claims: [] };
+    // Chu Kì khai báo; nếu đang đúng ngày 75 thì chu kì đó sẽ tự được đếm nên trừ ra để không đếm 2 lần
+    s.dayStreak = {
+      anchor: ds > 0 ? { count: ds, endDate: input.dayIncludesToday ? today : addDays(today, -1) } : null,
+      claims: [],
+      cycleBase: 0,
+    };
+    s.dayStreak.cycleBase = Math.max(0, n(input.cycles) - completedCycles(s, streakMin(s)));
     if (ds > 0) {
       const st = computeDayStreak(s, today);
       RULES.DAY_STREAK_REWARDS.forEach((m) => {
@@ -771,8 +969,9 @@
     logMinutes, deposit, convertFun, purchasePreview, buyItem, useItem, spendFun,
     boxInfo, pickBoxReward, openBox,
     computeDayStreak, computeHabitStreak, milestoneStatus, claimDayMilestone, claimHabitMilestone,
-    addHabit, renameHabit, removeHabit, toggleHabitDay,
-    normalizeGoals, setGoalText, toggleGoal,
+    addHabit, renameHabit, removeHabit, toggleHabitDay, funConvertInfo,
+    goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, copyGoals, pruneGoalDays,
+    addTasks, editTask, removeTask, addTasksToDay,
     deleteEntry, undoLast, describeEntry, rewardText,
     applySetup, exportData, importData, statsRange, statsAllTime, needsBackupReminder,
   };

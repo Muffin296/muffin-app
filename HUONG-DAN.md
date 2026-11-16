@@ -1,4 +1,4 @@
-# Muffin Study Game — Hướng dẫn đưa lên mạng và cài vào iPhone
+# Muffin Study Game: Hướng dẫn đưa lên mạng và cài vào iPhone
 
 ## Các file trong thư mục
 
@@ -13,7 +13,7 @@
 
 ---
 
-## Bước 1 — Đưa app lên mạng (chọn 1 cách)
+## Bước 1: Đưa app lên mạng (chọn 1 cách)
 
 ### Cách A: Netlify Drop (nhanh nhất, không cần cài gì)
 
@@ -31,7 +31,7 @@
 1. Vào https://github.com/new, đặt tên repo `muffin-app`, chọn **Public**, bấm **Create repository**.
 2. Trong trang repo mới, bấm **uploading an existing file**, kéo **toàn bộ nội dung bên trong** thư mục `muffin-app` (không phải chính thư mục) vào, bấm **Commit changes**.
 3. Vào **Settings → Pages** → Source: **Deploy from a branch** → Branch: `main`, thư mục `/ (root)` → **Save**.
-4. Đợi 1–2 phút, link sẽ là `https://<tên-github-của-bạn>.github.io/muffin-app/`.
+4. Đợi 1-2 phút, link sẽ là `https://<tên-github-của-bạn>.github.io/muffin-app/`.
 
 **Cập nhật:** upload lại các file đã sửa vào repo (Add file → Upload files). Link giữ nguyên.
 
@@ -39,13 +39,13 @@
 
 ---
 
-## Bước 2 — Cài vào iPhone
+## Bước 2: Cài vào iPhone
 
 1. Trên iPhone, mở link ở Bước 1 bằng **Safari** (hoặc Chrome nếu iOS 16.4 trở lên).
 2. Bấm nút **Chia sẻ** (ô vuông có mũi tên lên).
 3. Kéo xuống, chọn **"Thêm vào MH chính"** (Add to Home Screen) → **Thêm**.
 4. Mở app **Muffin** từ icon chiếc bánh trên Màn hình chính (mở toàn màn hình, không có thanh địa chỉ).
-5. Lần đầu mở: bấm **"Nhập số dư ban đầu"** và khai số Muffin, Kho, Chu Kì, chuỗi, đồ đang có từ bản cũ.
+5. Lần đầu mở: bấm **"Nhập số dư ban đầu"** và khai số Muffin, Kho, Chu Kì (số lần đã đi hết 75 ngày Chuỗi Ngày), chuỗi, đồ đang có từ bản cũ.
    *Nếu có thói quen đang giữ chuỗi: thêm thói quen ở tab Thói quen trước, rồi vào Cài đặt → Nhập số dư ban đầu để khai chuỗi.*
 
 ### ⚠️ Lưu ý quan trọng về dữ liệu
@@ -59,6 +59,6 @@
 
 ## Khi sửa code và cập nhật
 
-1. Sửa file, rồi mở `sw.js` và tăng số phiên bản, ví dụ `muffin-v1.0.0` → `muffin-v1.0.1`.
+1. Sửa file, rồi mở `sw.js` và tăng số phiên bản, ví dụ `muffin-v1.1.0` → `muffin-v1.1.1`.
 2. Deploy lại **cùng link** như Bước 1.
 3. Trên iPhone, mở app khi có mạng: app tự lấy bản mới (có thể cần đóng hẳn app rồi mở lại 1 lần). **Dữ liệu vẫn giữ nguyên** vì dữ liệu nằm riêng trong bộ nhớ của app, không nằm trong file code.
