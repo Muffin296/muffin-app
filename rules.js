@@ -79,6 +79,7 @@
 
     // Thưởng Chuỗi Ngày. Phần thưởng: { fun: số phút giải trí } hoặc { item: id món trong SHOP }
     DAY_STREAK_REWARDS: [
+      { at: 3,  reward: { fun: 15 } },
       { at: 5,  reward: { fun: 45 } },
       { at: 10, reward: { fun: 60 } },
       { at: 15, reward: { item: 'movie' } },   // 1 vé xem phim
@@ -99,6 +100,7 @@
     // Thưởng Chuỗi Thói Quen (mỗi thói quen có chuỗi riêng).
     // { choice: [...] } = được chọn 1 trong các món.
     HABIT_STREAK_REWARDS: [
+      { at: 3,   reward: { fun: 10 } },
       { at: 5,   reward: { fun: 30 } },
       { at: 7,   reward: { item: 'cafe' } },             // Đi cafe học
       { at: 14,  reward: { fun: 25 } },
