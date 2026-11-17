@@ -22,9 +22,9 @@
   const RULES = {
     // Quy đổi phút → Muffin thường: cần bao nhiêu phút cho 1 Muffin
     MINUTES_PER_MUFFIN: {
-      home: 10,  // Học ở nhà:   10 phút = 1 Muffin
-      class: 20, // Học trên lớp: 20 phút = 1 Muffin
-      work: 15,  // Làm việc:    15 phút = 1 Muffin
+      home: 15,  // Học ở nhà:   15 phút = 1 Muffin
+      class: 25, // Học trên lớp: 25 phút = 1 Muffin
+      work: 20,  // Làm việc:    20 phút = 1 Muffin
       gym: 30,   // Tập gym:     30 phút = 1 Muffin
     },
 
@@ -56,12 +56,12 @@
       ],
     },
 
-    // Cửa Hàng: tên món - giá Muffin. group: small = Giải trí nhỏ, shopping = Mua sắm, big = Trải nghiệm lớn
+    // Cửa Hàng: tên món - giá Muffin. group: small = Giải trí, shopping = Mua sắm, big = Trải nghiệm
     // bagName: tên thẻ hiện trong Túi Đồ.
     SHOP: [
-      { id: 'cafe',   name: 'Đi cafe học',     bagName: 'Đi Cafe Học',     price: 55,   group: 'small',    icon: '☕' },
+      { id: 'cafe',   name: 'Đi cafe học',     bagName: 'Đi Cafe Học',     price: 55,   group: 'big',      icon: '☕' },
       { id: 'net',    name: 'Net 2 tiếng',     bagName: 'Net 2 Tiếng',     price: 70,   group: 'small',    icon: '🎮' },
-      { id: 'food',   name: 'Đồ ăn/uống <60k', bagName: 'Đồ Ăn/Uống <60k', price: 70,   group: 'small',    icon: '🧋' },
+      { id: 'food',   name: 'Đồ ăn/uống <60k', bagName: 'Đồ Ăn/Uống <60k', price: 70,   group: 'shopping', icon: '🧋' },
       { id: 'movie',  name: '1 vé xem phim',   bagName: 'Vé Xem Phim',     price: 90,   group: 'small',    icon: '🎬' },
       { id: 'buy100', name: 'Mua đồ <100k',    bagName: 'Thẻ Mua <100k',   price: 111,  group: 'shopping', icon: '🛍️' },
       { id: 'buy150', name: 'Mua đồ <150k',    bagName: 'Thẻ Mua <150k',   price: 150,  group: 'shopping', icon: '🛍️' },
@@ -99,31 +99,32 @@
     // Thưởng Chuỗi Thói Quen (mỗi thói quen có chuỗi riêng).
     // { choice: [...] } = được chọn 1 trong các món.
     HABIT_STREAK_REWARDS: [
-      { at: 5,   reward: { fun: 15 } },
+      { at: 5,   reward: { fun: 30 } },
       { at: 7,   reward: { item: 'cafe' } },             // Đi cafe học
-      { at: 14,  reward: { fun: 10 } },
-      { at: 20,  reward: { fun: 10 } },
-      { at: 25,  reward: { fun: 10 } },
+      { at: 14,  reward: { fun: 25 } },
+      { at: 20,  reward: { fun: 25 } },
+      { at: 25,  reward: { fun: 25 } },
       { at: 30,  reward: { item: 'buy100' } },           // Mua đồ <100k
-      { at: 35,  reward: { fun: 10 } },
-      { at: 40,  reward: { fun: 10 } },
+      { at: 35,  reward: { fun: 25 } },
+      { at: 40,  reward: { fun: 25 } },
       { at: 45,  reward: { choice: ['food', 'net'] } },  // Đồ ăn/uống <60k HOẶC Net 2 tiếng
-      { at: 50,  reward: { fun: 10 } },
-      { at: 55,  reward: { fun: 10 } },
+      { at: 50,  reward: { fun: 25 } },
+      { at: 55,  reward: { fun: 25 } },
       { at: 60,  reward: { item: 'buy150' } },           // Mua đồ <150k
-      { at: 65,  reward: { fun: 10 } },
-      { at: 70,  reward: { fun: 10 } },
+      { at: 65,  reward: { fun: 25 } },
+      { at: 70,  reward: { fun: 25 } },
       { at: 75,  reward: { choice: ['food', 'net'] } },
-      { at: 80,  reward: { fun: 10 } },
-      { at: 85,  reward: { fun: 10 } },
+      { at: 80,  reward: { fun: 25 } },
+      { at: 85,  reward: { fun: 25 } },
       { at: 90,  reward: { item: 'buy350' } },           // Mua đồ <350k
-      { at: 95,  reward: { fun: 10 } },
+      { at: 95,  reward: { fun: 25 } },
       { at: 100, reward: { item: 'buy1m' } },            // Mua đồ <1tr
     ],
 
     /* ---------- Các mặc định cho luật chưa rõ ở bản cũ (mục 3) ---------- */
     // Một ngày được tính vào Chuỗi Ngày khi tổng phút ghi nhận (mọi loại) >= ngưỡng này.
-    // Có thể đổi trong Cài đặt (lưu ở state.settings.streakMin).
+    // Có thể đổi trong Cài đặt (lưu ở state.settings.streakMin). Đổi ngưỡng chỉ áp dụng từ hôm đổi trở đi:
+    // ngày cũ giữ ngưỡng cũ, lưu ở state.settings.streakMinHist = [{ until: ngày cuối, min }] tăng dần.
     STREAK_MIN_MINUTES: 60,
     // Ngày tính theo giờ Asia/Ho_Chi_Minh (UTC+7, không có giờ mùa hè).
     TZ_OFFSET_HOURS: 7,
@@ -240,7 +241,7 @@
       goalDays: {},    // Mục tiêu theo ngày: { 'YYYY-MM-DD': [{ id, text, done }] }
       tasks: [],       // Kho nhiệm vụ: [{ id, text }]
       log: [],
-      settings: { streakMin: RULES.STREAK_MIN_MINUTES },
+      settings: { streakMin: RULES.STREAK_MIN_MINUTES, streakMinHist: [] },
       meta: { lastExport: null, setupDone: false, welcomeDismissed: false, lastFunApp: null },
     };
   }
@@ -277,6 +278,16 @@
       }
       delete s.goals;
       if (s.dayStreak && s.dayStreak.cycleBase == null) s.dayStreak.cycleBase = 0;
+    }
+    // Ngưỡng chuỗi trước bản 1.9.0 áp ngược cho mọi ngày cũ. Lần đầu mở bản mới: ngày trước hôm nay
+    // dùng ngưỡng mặc định nếu ngưỡng hiện tại cao hơn (để đổi ngưỡng không làm gãy chuỗi đã có).
+    if (!s.settings || typeof s.settings !== 'object' || Array.isArray(s.settings)) s.settings = {};
+    if (!Array.isArray(s.settings.streakMinHist)) {
+      s.settings.streakMinHist = [];
+      const cur = s.settings.streakMin;
+      if (Number.isInteger(cur) && cur > RULES.STREAK_MIN_MINUTES) {
+        s.settings.streakMinHist.push({ until: addDays(dateKey(now || Date.now()), -1), min: RULES.STREAK_MIN_MINUTES });
+      }
     }
     fillDefaults(s, createInitialState(now || s.createdAt || Date.now()));
     s.schemaVersion = SCHEMA_VERSION;
@@ -517,12 +528,38 @@
     const v = state.settings && state.settings.streakMin;
     return Number.isInteger(v) && v > 0 ? v : RULES.STREAK_MIN_MINUTES;
   }
+  // Ngưỡng áp dụng cho ngày d: ngày nằm trong một mốc cũ thì dùng ngưỡng cũ, còn lại dùng ngưỡng hiện tại
+  function streakMinFor(state, d) {
+    const hist = state.settings && state.settings.streakMinHist;
+    if (Array.isArray(hist)) {
+      for (let i = 0; i < hist.length; i++) {
+        const h = hist[i];
+        if (h && d <= h.until && Number.isInteger(h.min) && h.min > 0) return h.min;
+      }
+    }
+    return streakMin(state);
+  }
+  // Đổi ngưỡng Chuỗi ngày: áp dụng từ hôm nay, ngày trước đó giữ ngưỡng cũ
+  function setStreakMin(state, min, today) {
+    if (!Number.isInteger(min) || min <= 0 || min > 1440) return fail('Ngưỡng phải từ 1 đến 1440 phút.');
+    const s = clone(state);
+    if (!s.settings || typeof s.settings !== 'object') s.settings = {};
+    const cur = streakMin(s);
+    if (min === cur) return ok(s);
+    const hist = Array.isArray(s.settings.streakMinHist) ? s.settings.streakMinHist : [];
+    const until = addDays(today, -1);
+    const last = hist[hist.length - 1];
+    if (!last || last.until < until) hist.push({ until: until, min: cur });
+    s.settings.streakMinHist = hist;
+    s.settings.streakMin = min;
+    return ok(s);
+  }
 
   // Số Chu Kì đã hoàn thành trong lịch sử: mỗi đoạn chuỗi liên tiếp dài L ngày cho floor(L / 75) Chu Kì
-  function completedCycles(state, min) {
+  function completedCycles(state) {
     const N = RULES.DAY_STREAK_CYCLE_DAYS;
     const set = {};
-    Object.keys(state.days).forEach((d) => { if (dayTotal(state.days[d]) >= min) set[d] = true; });
+    Object.keys(state.days).forEach((d) => { if (dayTotal(state.days[d]) >= streakMinFor(state, d)) set[d] = true; });
     const a = state.dayStreak && state.dayStreak.anchor;
     if (a && a.count > 0) for (let i = 0; i < a.count; i++) set[addDays(a.endDate, -i)] = true;
     const list = Object.keys(set).sort();
@@ -545,10 +582,9 @@
    *   cycles    Chu Kì = số lần đã đi hết 75 ngày từ trước tới nay (cả bản cũ)
    */
   function computeDayStreak(state, today) {
-    const min = streakMin(state);
     const N = RULES.DAY_STREAK_CYCLE_DAYS;
     const anchor = state.dayStreak && state.dayStreak.anchor;
-    const r = countRun((d) => dayTotal(state.days[d]) >= min || anchorCovers(anchor, d), today);
+    const r = countRun((d) => dayTotal(state.days[d]) >= streakMinFor(state, d) || anchorCovers(anchor, d), today);
     const idx = r.count > 0 ? Math.floor((r.count - 1) / N) : 0;
     return {
       count: r.count - idx * N,
@@ -557,8 +593,8 @@
       fullRunStart: r.runStart,
       todayDone: r.todayDone,
       todayMinutes: dayTotal(state.days[today]),
-      min: min,
-      cycles: ((state.dayStreak && state.dayStreak.cycleBase) || 0) + completedCycles(state, min),
+      min: streakMinFor(state, today),
+      cycles: ((state.dayStreak && state.dayStreak.cycleBase) || 0) + completedCycles(state),
     };
   }
 
@@ -982,7 +1018,7 @@
       claims: [],
       cycleBase: 0,
     };
-    s.dayStreak.cycleBase = Math.max(0, n(input.cycles) - completedCycles(s, streakMin(s)));
+    s.dayStreak.cycleBase = Math.max(0, n(input.cycles) - completedCycles(s));
     if (ds > 0) {
       const st = computeDayStreak(s, today);
       RULES.DAY_STREAK_REWARDS.forEach((m) => {
@@ -1080,6 +1116,6 @@
     goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, goalBonusInfo, copyGoals, pruneGoalDays,
     addTasks, editTask, removeTask, addTasksToDay,
     deleteEntry, undoLast, describeEntry, rewardText,
-    applySetup, exportData, importData, statsRange, funStatsRange, funLimits, funAppLimit, statsAllTime, needsBackupReminder,
+    applySetup, exportData, importData, statsRange, funStatsRange, setStreakMin, streakMinFor, funLimits, funAppLimit, statsAllTime, needsBackupReminder,
   };
 });

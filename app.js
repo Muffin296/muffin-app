@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.8.0';
+  const APP_VERSION = '1.9.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -68,7 +68,7 @@
   const CAT_COLOR = { home: '#3B82F6', class: '#A855F7', work: '#F97316', gym: '#F43F5E' };
   // Biểu tượng và màu cho từng món trong Cửa hàng (rules.js giữ emoji gốc, ở đây dùng icon nét)
   const ITEM_LOOK = {
-    cafe: ['coffee', 'work'], net: ['game', 'class'], food: ['food', 'gym'], movie: ['film', 'home'],
+    cafe: ['coffee', 'work'], net: ['game', 'class'], food: ['food', 'work'], movie: ['film', 'home'],
     buy100: ['tag', 'ok'], buy150: ['tag', 'ok'], buy250: ['tag', 'ok'],
     buy350: ['gift', 'class'], buy500: ['gift', 'class'], buy700: ['gift', 'class'],
     buy1m: ['gem', 'gym'], buy1m5: ['gem', 'gym'], buy2m5: ['gem', 'gym'],
@@ -1039,7 +1039,7 @@
       '<div class="btn-row" style="margin-top:12px"><button type="button" class="btn pri" data-act="export">Xuất JSON</button><button type="button" class="btn" data-act="import">Nhập JSON</button></div></section>' +
       '<section class="card"><h3>Ngưỡng Chuỗi ngày</h3>' +
       '<form class="row" data-form="streak-min"><input class="inp" name="v" inputmode="numeric" pattern="[0-9]*" value="' + M.computeDayStreak(state, todayKey()).min + '" aria-label="Số phút tối thiểu mỗi ngày">' +
-      '<button class="btn pri" type="submit">Lưu</button></form><p class="muted small" style="margin-top:8px">Phút tối thiểu mỗi ngày (mặc định ' + R.STREAK_MIN_MINUTES + ')</p></section>' +
+      '<button class="btn pri" type="submit">Lưu</button></form><p class="muted small" style="margin-top:8px">Phút tối thiểu mỗi ngày (mặc định ' + R.STREAK_MIN_MINUTES + '). Đổi ngưỡng chỉ áp dụng từ hôm nay, ngày cũ giữ ngưỡng cũ.</p></section>' +
       '<section class="card"><h3>Bản sao lưu tự động</h3>' +
       (backups.length ? '<div class="list" style="padding:0">' + backups.map((b, i) =>
         '<div class="li"><div class="li-main"><b>' + esc(b.reason) + '</b><span class="li-sub">' + dayLabel(M.dateKey(b.at)) + ' ' + fmtTime(b.at) + '</span></div>' +
@@ -1233,7 +1233,12 @@
       if (res.ok) { inp.value = ''; commit(res, null); toast('Đã thêm thói quen', 'success'); } else toast(res.error, 'error');
     } else if (kind === 'streak-min') {
       const r = readInt(inp, { max: 1440, maxMsg: 'Tối đa 1440 phút.' });
-      if (r.ok) { state.settings.streakMin = r.value; save(); render(); toast('Ngưỡng Chuỗi ngày: ' + r.value + ' phút', 'success'); }
+      if (r.ok) {
+        const res = M.setStreakMin(state, r.value, todayKey());
+        if (!res.ok) return toast(res.error, 'error');
+        state = res.state; save(); render();
+        toast('Ngưỡng Chuỗi ngày: ' + r.value + ' phút, áp dụng từ hôm nay', 'success');
+      }
     } else if (kind === 'goal-add') {
       const res = M.addGoals(state, ui.goalDate, [inp.value], todayKey(), ctx());
       if (commit(res)) {
