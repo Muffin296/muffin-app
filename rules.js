@@ -79,19 +79,19 @@
 
     // Thưởng Chuỗi Ngày. Phần thưởng: { fun: số phút giải trí } hoặc { item: id món trong SHOP }
     DAY_STREAK_REWARDS: [
-      { at: 5,  reward: { fun: 30 } },
-      { at: 10, reward: { fun: 45 } },
+      { at: 5,  reward: { fun: 45 } },
+      { at: 10, reward: { fun: 60 } },
       { at: 15, reward: { item: 'movie' } },   // 1 vé xem phim
-      { at: 20, reward: { fun: 30 } },
-      { at: 25, reward: { fun: 45 } },
+      { at: 20, reward: { fun: 45 } },
+      { at: 25, reward: { fun: 60 } },
       { at: 30, reward: { item: 'buy150' } },  // Mua đồ <150k
-      { at: 35, reward: { fun: 30 } },
-      { at: 40, reward: { fun: 45 } },
+      { at: 35, reward: { fun: 45 } },
+      { at: 40, reward: { fun: 60 } },
       { at: 45, reward: { item: 'movie' } },
-      { at: 50, reward: { fun: 30 } },
-      { at: 55, reward: { fun: 45 } },
+      { at: 50, reward: { fun: 45 } },
+      { at: 55, reward: { fun: 60 } },
       { at: 60, reward: { item: 'buy250' } },  // Mua đồ <250k
-      { at: 65, reward: { fun: 45 } },
+      { at: 65, reward: { fun: 60 } },
       { at: 70, reward: { item: 'movie' } },
       { at: 75, reward: { item: 'travel' } },  // Du lịch
     ],
