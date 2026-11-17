@@ -236,14 +236,14 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 /* Chọn mục (tiêu phút giải trí) */
 .apps-lb { font-size: 13px; font-weight: 800; color: var(--muted); margin: 4px 2px 8px; }
 .apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
-.app {
+.pk {
   width: 100%; min-width: 0; height: 62px; border-radius: 16px; border: 2px solid transparent; background: var(--soft); color: var(--ink);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: inherit;
   font-size: 12.5px; font-weight: 800; padding: 0;
 }
-.app span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
-.app svg { width: 22px; height: 22px; color: var(--a); }
-.app.on { border-color: var(--a); background: color-mix(in srgb, var(--a) 14%, var(--card)); }
+.pk span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.pk svg { width: 22px; height: 22px; color: var(--a); }
+.pk.on { border-color: var(--a); background: color-mix(in srgb, var(--a) 14%, var(--card)); }
 .has-pick .np-disp { margin: 0 0 10px; }
 .has-pick .np-n { font-size: 56px; }
 .has-pick .np-kp button { height: 50px; }

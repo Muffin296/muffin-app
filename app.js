@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.5.0';
+  const APP_VERSION = '1.5.1';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -271,7 +271,7 @@
         '<div class="np-hd"><div class="np-ic">' + o.icon + '</div><div class="np-tt"><b>' + esc(o.title) + '</b>' + (o.sub ? '<span>' + esc(o.sub) + '</span>' : '') + '</div>' +
         '<button type="button" class="np-x" data-np="x" aria-label="Đóng">' + ICON.x + '</button></div>' +
         (pk ? '<div class="apps-lb" id="npPl">' + esc(pk.label) + '</div><div class="apps" role="radiogroup" aria-labelledby="npPl">' + pk.items.map((it) =>
-          '<button type="button" class="app" role="radio" data-pick="' + esc(it.id) + '" style="--a:' + it.color + '">' + it.icon + '<span>' + esc(it.name) + '</span></button>').join('') + '</div>' : '') +
+          '<button type="button" class="pk" role="radio" data-pick="' + esc(it.id) + '" style="--a:' + it.color + '">' + it.icon + '<span>' + esc(it.name) + '</span></button>').join('') + '</div>' : '') +
         '<div class="np-disp"><div class="np-n num" id="npN"></div><div class="np-g" id="npG" aria-live="polite"></div></div>' +
         (o.quick && o.quick.length ? '<div class="np-qc">' + o.quick.map((q) => '<button type="button" data-q="' + q.v + '">' + esc(q.label || q.v) + '</button>').join('') + '</div>' : '') +
         '<div class="np-kp">' + keys + '</div>' +
