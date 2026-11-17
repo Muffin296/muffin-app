@@ -3,7 +3,7 @@
  * Chiến lược: có mạng thì lấy bản mới nhất (tối đa chờ 3 giây), mất mạng thì dùng cache.
  * Dữ liệu người dùng nằm trong localStorage, không bị ảnh hưởng khi cập nhật.
  */
-const VERSION = 'muffin-v1.10.0';
+const VERSION = 'muffin-v1.10.1';
 const FILES = [
   './',
   './index.html',
