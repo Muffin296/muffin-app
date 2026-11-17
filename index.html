@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Muffin</title>
   <meta name="description" content="Muffin Study Game: tự thưởng khi học, làm việc và tập gym.">
-  <meta name="theme-color" content="#FFFFFF">
+  <meta name="theme-color" content="#FAF5EE" id="themeColor">
   <!-- PWA cho iPhone -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -16,30 +16,16 @@
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Áp giao diện sáng/tối trước khi vẽ để không bị nháy màu
+    try { var th = localStorage.getItem('muffin.theme'); if (th === 'light' || th === 'dark') document.documentElement.dataset.theme = th; } catch (e) { /* bỏ qua */ }
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app" id="app">
-    <header class="topbar" id="topbar">
-      <div class="topbar-row">
-        <button class="brand" data-act="go" data-view="today" aria-label="Về trang Ghi nhận">
-          <img src="icons/icon.svg" alt="" width="30" height="30">
-          <span>Muffin</span>
-        </button>
-        <div class="top-actions" id="topActions"></div>
-      </div>
-      <div class="statbar" id="statbar" aria-label="Chỉ số"></div>
-    </header>
-    <div id="banner"></div>
-
-    <div class="layout">
-      <aside class="sidebar" id="sidebar" aria-label="Chỉ số và mục tiêu"></aside>
-      <main class="main">
-        <nav class="tabs" id="tabs" aria-label="Điều hướng chính"></nav>
-        <div id="view" class="view"></div>
-      </main>
-    </div>
-
+    <main id="view" class="view"></main>
+    <nav class="tabbar" id="tabs" aria-label="Điều hướng chính"></nav>
     <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
     <div id="modalRoot"></div>
     <input type="file" id="importFile" accept="application/json,.json" hidden>
