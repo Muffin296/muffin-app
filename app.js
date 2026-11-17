@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.7.0';
+  const APP_VERSION = '1.8.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -274,7 +274,7 @@
         '<div class="np-hd"><div class="np-ic">' + o.icon + '</div><div class="np-tt"><b>' + esc(o.title) + '</b>' + (o.sub ? '<span>' + esc(o.sub) + '</span>' : '') + '</div>' +
         '<button type="button" class="np-x" data-np="x" aria-label="Đóng">' + ICON.x + '</button></div>' +
         (pk ? '<div class="apps-lb" id="npPl">' + esc(pk.label) + '</div><div class="apps" role="radiogroup" aria-labelledby="npPl">' + pk.items.map((it) =>
-          '<button type="button" class="pk" role="radio" data-pick="' + esc(it.id) + '" style="--a:' + it.color + '">' + it.icon + '<span>' + esc(it.name) + '</span></button>').join('') + '</div>' : '') +
+          '<button type="button" class="pk" role="radio" data-pick="' + esc(it.id) + '" style="--a:' + it.color + '"' + (it.locked ? ' disabled aria-label="' + esc(it.name) + ', hết giới hạn hôm nay"' : '') + '>' + (it.locked ? ICON.lock : it.icon) + '<span>' + esc(it.name) + '</span></button>').join('') + '</div>' : '') +
         '<div class="np-disp"><div class="np-n num" id="npN"></div><div class="np-g" id="npG" aria-live="polite"></div></div>' +
         (o.quick && o.quick.length ? '<div class="np-qc">' + o.quick.map((q) => '<button type="button" data-q="' + q.v + '">' + esc(q.label || q.v) + '</button>').join('') + '</div>' : '') +
         '<div class="np-kp">' + keys + '</div>' +
@@ -321,7 +321,7 @@
         const q = e.target.closest('[data-q]');
         if (q) { val = q.dataset.q; return upd(); }
         const p = e.target.closest('[data-pick]');
-        if (p && pk) { pk.value = p.dataset.pick; return upd(); }
+        if (p && pk && !p.disabled) { pk.value = p.dataset.pick; return upd(); }
         const b = e.target.closest('[data-np]');
         if (!b) return;
         if (b.dataset.np === 'x') done(null);
@@ -681,15 +681,18 @@
   /* ---------- Túi đồ (có Mở hộp) ---------- */
   VIEWS.bag = function () {
     const bi = M.boxInfo(state, todayKey());
+    const allLocked = M.funLimits(state, todayKey()).every((l) => l.locked);
     let h = topMain('Túi đồ');
     h += '<section class="fund"><div class="flb">Quỹ giải trí</div><div class="fv num">' + fmt(state.fun) + '<small> phút</small></div>' +
-      '<button type="button" class="btn hl block" data-act="spend-open"' + (state.fun > 0 ? '' : ' disabled') + '>Tiêu phút</button></section>';
+      (allLocked ? '<button type="button" class="btn hl block" disabled>Hết giới hạn hôm nay</button></section>'
+        : '<button type="button" class="btn hl block" data-act="spend-open"' + (state.fun > 0 ? '' : ' disabled') + '>Tiêu phút</button></section>');
     const fu = M.funUseInfo(state, todayKey());
     if (fu.total) {
       h += '<section class="card spent"><div class="hd"><b>Hôm nay đã tiêu</b><span>' + fmt(fu.total) + ' phút</span></div>' +
         '<div class="stack" role="img" aria-label="Tỷ lệ phút giải trí theo mục">' + fu.list.map((x) => '<i style="--a:' + APP_COLOR[x.id] + ';flex:' + x.minutes + '"></i>').join('') + '</div>' +
-        fu.list.map((x) => '<div class="rx" style="--a:' + APP_COLOR[x.id] + '"><span class="dot">' + ic('a_' + x.id) + '</span><span class="nm">' + esc(x.name) + '</span>' +
-          '<span class="mn">' + fmt(x.minutes) + "'</span><span class=\"pc\">" + Math.round(x.minutes * 100 / fu.total) + '%</span></div>').join('') + '</section>';
+        fu.list.map((x) => '<div class="rx' + (x.locked ? ' lk' : '') + '" style="--a:' + APP_COLOR[x.id] + '"' + (x.locked ? ' aria-label="' + esc(x.name) + ' đã dùng hết ' + x.limit + ' phút, khoá tới hết ngày"' : '') + '>' +
+          '<span class="dot">' + (x.locked ? ICON.lock : ic('a_' + x.id)) + '</span><span class="nm">' + esc(x.name) + '</span>' +
+          '<span class="mn">' + fmt(x.minutes) + '<small>/' + x.limit + "'</small></span><span class=\"pc\">" + (x.locked ? 'Hết' : 'còn ' + x.left + "'") + '</span></div>').join('') + '</section>';
     }
     h += '<section class="card boxc" style="margin-top:12px"><span class="bic">' + ICON.gift + '</span><div class="bt"><b>Hộp Huyền Thoại</b>' +
       '<span>' + (bi.opened ? 'Hôm nay đã mở' : bi.ready ? 'Sẵn sàng mở!' : 'Hôm nay ' + fmt(bi.progress) + '/' + bi.per + '\' ở nhà') + '</span>' + bar(bi.progress, bi.per, null, 'Phút học ở nhà hôm nay cho Hộp Huyền Thoại') + '</div>' +
@@ -712,14 +715,21 @@
   R.FUN_APPS.forEach((a) => { FUN_APP_NAME[a.id] = a.name; });
   async function openSpend() {
     const last = state.meta.lastFunApp;
+    const lim = {};
+    M.funLimits(state, todayKey()).forEach((l) => { lim[l.id] = l; });
     const pick = {
-      label: 'Dùng cho', value: FUN_APP_NAME[last] ? last : null,
-      items: R.FUN_APPS.map((a) => ({ id: a.id, name: a.name, icon: ic('a_' + a.id), color: APP_COLOR[a.id] || 'var(--ink)' })),
+      label: 'Dùng cho', value: lim[last] && !lim[last].locked ? last : null,
+      items: R.FUN_APPS.map((a) => ({ id: a.id, name: a.name, icon: ic('a_' + a.id), color: APP_COLOR[a.id] || 'var(--ink)', locked: lim[a.id].locked })),
     };
     const v = await numPad({
       title: 'Tiêu phút giải trí', sub: 'Quỹ còn ' + fmt(state.fun) + "'", icon: ICON.clock, tone: 'ok', unit: 'phút', pick: pick,
       quick: [5, 15, 30, 45].filter((q) => q <= state.fun).map((q) => ({ v: q, label: q + "'" })),
-      check: (v) => v > state.fun ? { err: 'Quỹ chỉ còn ' + fmt(state.fun) + ' phút' } : { html: 'Còn lại ' + fmt(state.fun - v) + ' phút' },
+      check: (v) => {
+        if (v > state.fun) return { err: 'Quỹ chỉ còn ' + fmt(state.fun) + ' phút' };
+        const l = pick.value && lim[pick.value];
+        if (l && v > l.left) return { err: l.name + ' hôm nay chỉ còn ' + l.left + ' phút' };
+        return { html: 'Quỹ còn ' + fmt(state.fun - v) + "'" + (l ? ' · ' + esc(l.name) + ' còn ' + (l.left - v) + "'" : '') };
+      },
       okLabel: (v) => !pick.value ? 'Chọn mục giải trí' : v ? 'Tiêu ' + fmt(v) + ' phút · ' + FUN_APP_NAME[pick.value] : 'Tiêu',
     });
     if (v && pick.value) commit(M.spendFun(state, v, ctx(), pick.value), 'Tiêu ' + v + "' · " + FUN_APP_NAME[pick.value] + '. Chơi vui!');
@@ -988,7 +998,8 @@
       '<li><b>Mua đồ</b>: trừ Kho trước, thiếu thì trừ thêm Muffin thường. App hiện trước số bị trừ.</li>' +
       '<li>Phút giải trí vào <b>Quỹ giải trí</b>; tiêu bằng nút “Tiêu phút” ở Túi đồ.</li>' +
       '<li><b>Mỗi ngày phải gửi ít nhất ' + R.DAILY_KHO_MIN + ' Muffin vào Kho</b>. Chưa gửi đủ thì chưa đổi được phút giải trí (vẫn mua đồ bình thường).</li>' +
-      '<li><b>Mỗi ngày đổi tối đa ' + R.FUN_CONVERT_MAX_MINUTES_PER_DAY + ' phút giải trí</b> (2 tiếng, tức ' + Math.floor(R.FUN_CONVERT_MAX_MINUTES_PER_DAY / R.FUN_MINUTES_PER_MUFFIN) + ' Muffin). Phút thưởng từ chuỗi không tính vào giới hạn này.</li></ul></section>' +
+      '<li><b>Mỗi ngày đổi tối đa ' + R.FUN_CONVERT_MAX_MINUTES_PER_DAY + ' phút giải trí</b> (2 tiếng, tức ' + Math.floor(R.FUN_CONVERT_MAX_MINUTES_PER_DAY / R.FUN_MINUTES_PER_MUFFIN) + ' Muffin). Phút thưởng từ chuỗi không tính vào giới hạn này.</li>' +
+      '<li><b>Giới hạn mỗi mục mỗi ngày</b>: ' + R.FUN_APPS.map((a) => a.name + ' ' + a.limit + '\'').join(', ') + '. Dùng hết thì mục đó bị khoá tới hết ngày, qua 0:00 mở lại.</li></ul></section>' +
       '<section class="card"><h3>3. Hộp Huyền Thoại</h3><ul><li>Trong 1 ngày <b>học ở nhà đủ ' + R.BOX.HOME_MINUTES_PER_DAY + ' phút</b> thì được mở hộp 1 lần (ở tab Túi đồ).</li>' +
       '<li><b>Mỗi ngày chỉ mở 1 lần</b>, học nhiều hơn cũng không thêm lượt. Qua 0:00 đếm lại từ 0; không mở trong ngày thì mất lượt hôm đó.</li>' +
       '<li>Mỗi lượt: ngẫu nhiên ' + R.BOX.REWARDS.map((r) => r.muffin).join(', ') + ' Muffin thường, cơ hội ngang nhau.</li></ul></section>' +

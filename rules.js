@@ -33,14 +33,15 @@
     FUN_MINUTES_PER_MUFFIN: 5,
 
     // Các mục giải trí khi tiêu phút từ Quỹ giải trí (chọn 1 mục mỗi lần tiêu).
+    // limit: số phút tối đa mỗi ngày cho mục đó; dùng hết thì khoá tới hết ngày, qua 0:00 đếm lại.
     FUN_APPS: [
-      { id: 'tiktok', name: 'TikTok' },
-      { id: 'youtube', name: 'YouTube' },
-      { id: 'facebook', name: 'Facebook' },
-      { id: 'instagram', name: 'Instagram' },
-      { id: 'threads', name: 'Threads' },
-      { id: 'game', name: 'Game' },
-      { id: 'web', name: 'Website' },
+      { id: 'tiktok', name: 'TikTok', limit: 45 },
+      { id: 'youtube', name: 'YouTube', limit: 60 },
+      { id: 'facebook', name: 'Facebook', limit: 15 },
+      { id: 'instagram', name: 'Instagram', limit: 15 },
+      { id: 'threads', name: 'Threads', limit: 15 },
+      { id: 'game', name: 'Game', limit: 60 },
+      { id: 'web', name: 'Website', limit: 60 },
     ],
 
     // Hộp Huyền Thoại: trong 1 ngày học ở nhà đủ 200 phút thì mở được 1 lần (mỗi ngày tối đa 1 lần).
@@ -424,6 +425,9 @@
     if (!Number.isInteger(minutes) || minutes <= 0) return fail('Số phút phải là số nguyên dương.');
     if (minutes > state.fun) return fail('Quỹ giải trí chỉ còn ' + state.fun + ' phút.');
     if (!FUN_APP[app]) return fail('Hãy chọn mục giải trí.');
+    const lim = funAppLimit(state, dateKey(ctx.now), app);
+    if (lim.locked) return fail(lim.name + ' hôm nay đã dùng hết ' + lim.limit + ' phút.');
+    if (minutes > lim.left) return fail(lim.name + ' hôm nay chỉ còn ' + lim.left + ' phút.');
     const s = clone(state);
     s.fun -= minutes;
     const entry = baseEntry('spendFun', ctx); entry.minutes = minutes; entry.app = app;
@@ -435,10 +439,22 @@
     return ok(s, entry);
   }
 
-  // Phút giải trí đã tiêu trong ngày theo mục, xếp giảm dần: { total, list: [{ id, name, minutes }] }
+  // Giới hạn trong ngày của 1 mục: { id, name, limit, used, left, locked }
+  function funAppLimit(state, date, app) {
+    const a = FUN_APP[app];
+    const used = ((((state.days[date] || {}).funUse) || {})[app]) || 0;
+    const left = Math.max(0, a.limit - used);
+    return { id: a.id, name: a.name, limit: a.limit, used: used, left: left, locked: left === 0 };
+  }
+  // Giới hạn trong ngày của mọi mục, theo thứ tự RULES.FUN_APPS
+  function funLimits(state, date) { return RULES.FUN_APPS.map((a) => funAppLimit(state, date, a.id)); }
+  // Phút giải trí đã tiêu trong ngày theo mục, xếp giảm dần: { total, list: [{ id, name, minutes, limit, left, locked }] }
   function funUseInfo(state, date) {
     const use = ((state.days[date] || {}).funUse) || {};
-    const list = RULES.FUN_APPS.filter((a) => use[a.id] > 0).map((a) => ({ id: a.id, name: a.name, minutes: use[a.id] }));
+    const list = RULES.FUN_APPS.filter((a) => use[a.id] > 0).map((a) => {
+      const l = funAppLimit(state, date, a.id);
+      return { id: a.id, name: a.name, minutes: use[a.id], limit: l.limit, left: l.left, locked: l.locked };
+    });
     list.sort((a, b) => b.minutes - a.minutes);
     return { total: list.reduce((n, x) => n + x.minutes, 0), list: list };
   }
@@ -1064,6 +1080,6 @@
     goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, goalBonusInfo, copyGoals, pruneGoalDays,
     addTasks, editTask, removeTask, addTasksToDay,
     deleteEntry, undoLast, describeEntry, rewardText,
-    applySetup, exportData, importData, statsRange, funStatsRange, statsAllTime, needsBackupReminder,
+    applySetup, exportData, importData, statsRange, funStatsRange, funLimits, funAppLimit, statsAllTime, needsBackupReminder,
   };
 });
