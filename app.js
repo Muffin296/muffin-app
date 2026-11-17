@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.4.1';
+  const APP_VERSION = '1.5.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -50,7 +50,17 @@
     sprout: I('<path d="M12 21v-9M12 12C12 7 8 5 4 5c0 4 3 7 8 7zM12 12c0-4 3-6 7-6 0 4-3 6-7 6z"/>'),
     upload: I('<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>'),
     lock: I('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    // Mục giải trí (icon nét tự vẽ, không phải logo)
+    a_tiktok: I('<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>'),
+    a_youtube: I('<rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/>'),
+    a_facebook: I('<path d="M15 3h-2a4 4 0 0 0-4 4v3H7v4h2v7h4v-7h3l1-4h-4V7a1 1 0 0 1 1-1h2z"/>'),
+    a_instagram: I('<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/>'),
+    a_threads: I('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
+    a_game: I('<rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 11v3M5.5 12.5h3M15 12h.01M18 13.5h.01"/>'),
+    a_web: I('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 3.5 9A14 14 0 0 1 12 21a14 14 0 0 1-3.5-9A14 14 0 0 1 12 3z"/>'),
   };
+  // Màu từng mục giải trí
+  const APP_COLOR = { tiktok: '#06B6D4', youtube: '#FF0033', facebook: '#1877F2', instagram: '#E1306C', threads: 'var(--ink)', game: '#8B5CF6', web: '#0EA5E9' };
   const ic = (name) => ICON[name] || '';
   const tone = (t) => '--c:var(--' + t + ');--cbg:var(--' + t + '-bg)';
   const CAT_COLOR = { home: '#3B82F6', class: '#A855F7', work: '#F97316', gym: '#F43F5E' };
@@ -245,7 +255,8 @@
   }
 
   /* ================= Bảng trượt: bàn phím số =================
-     o: { title, sub, icon, tone, unit, quick:[{v,label}], initial, hint, check(v) → {err} | {html}, okLabel(v) }
+     o: { title, sub, icon, tone, unit, quick:[{v,label}], initial, hint, check(v) → {err} | {html}, okLabel(v),
+          pick: { label, items:[{id, name, icon, color}], value } }  (pick.value cập nhật khi chọn; chưa chọn thì chưa bấm được)
      Trả về số đã chọn hoặc null nếu đóng. */
   function numPad(o) {
     return new Promise((resolve) => {
@@ -255,9 +266,12 @@
       let val = o.initial ? String(o.initial) : '';
       const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button type="button" data-k="' + n + '">' + n + '</button>').join('') +
         '<span></span><button type="button" data-k="0">0</button><button type="button" class="e" data-k="del" aria-label="Xóa 1 số">' + ICON.del + '</button>';
-      wrap.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(o.title) + '" style="' + tone(o.tone || 'ok') + '"><div class="grab"></div>' +
+      const pk = o.pick;
+      wrap.innerHTML = '<div class="sheet' + (pk ? ' has-pick' : '') + '" role="dialog" aria-modal="true" aria-label="' + esc(o.title) + '" style="' + tone(o.tone || 'ok') + '"><div class="grab"></div>' +
         '<div class="np-hd"><div class="np-ic">' + o.icon + '</div><div class="np-tt"><b>' + esc(o.title) + '</b>' + (o.sub ? '<span>' + esc(o.sub) + '</span>' : '') + '</div>' +
         '<button type="button" class="np-x" data-np="x" aria-label="Đóng">' + ICON.x + '</button></div>' +
+        (pk ? '<div class="apps-lb" id="npPl">' + esc(pk.label) + '</div><div class="apps" role="radiogroup" aria-labelledby="npPl">' + pk.items.map((it) =>
+          '<button type="button" class="app" role="radio" data-pick="' + esc(it.id) + '" style="--a:' + it.color + '">' + it.icon + '<span>' + esc(it.name) + '</span></button>').join('') + '</div>' : '') +
         '<div class="np-disp"><div class="np-n num" id="npN"></div><div class="np-g" id="npG" aria-live="polite"></div></div>' +
         (o.quick && o.quick.length ? '<div class="np-qc">' + o.quick.map((q) => '<button type="button" data-q="' + q.v + '">' + esc(q.label || q.v) + '</button>').join('') + '</div>' : '') +
         '<div class="np-kp">' + keys + '</div>' +
@@ -269,13 +283,14 @@
         nEl.className = 'np-n num' + (v ? '' : ' zero');
         nEl.innerHTML = fmt(v) + '<small>' + esc(o.unit) + '</small>';
         const r = v ? (o.check ? o.check(v) : {}) : { html: o.hint ? esc(o.hint) : '' };
-        valid = v > 0 && !r.err;
+        valid = v > 0 && !r.err && (!pk || !!pk.value);
         gEl.className = 'np-g' + (r.err ? ' err' : v ? ' ok' : '');
         gEl.innerHTML = r.err ? esc(r.err) : (r.html || '');
         gEl.style.visibility = gEl.innerHTML ? 'visible' : 'hidden';
         go.disabled = !valid;
         go.textContent = o.okLabel ? o.okLabel(v) : 'Xong';
         wrap.querySelectorAll('[data-q]').forEach((b) => b.classList.toggle('on', parseInt(b.dataset.q, 10) === v));
+        wrap.querySelectorAll('[data-pick]').forEach((b) => { const on = !!pk && b.dataset.pick === pk.value; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
       }
       function press(k) {
         if (k === 'del') val = val.slice(0, -1);
@@ -302,6 +317,8 @@
         if (k) return press(k.dataset.k);
         const q = e.target.closest('[data-q]');
         if (q) { val = q.dataset.q; return upd(); }
+        const p = e.target.closest('[data-pick]');
+        if (p && pk) { pk.value = p.dataset.pick; return upd(); }
         const b = e.target.closest('[data-np]');
         if (!b) return;
         if (b.dataset.np === 'x') done(null);
@@ -647,6 +664,13 @@
     let h = topMain('Túi đồ');
     h += '<section class="fund"><div class="flb">Quỹ giải trí</div><div class="fv num">' + fmt(state.fun) + '<small> phút</small></div>' +
       '<button type="button" class="btn hl block" data-act="spend-open"' + (state.fun > 0 ? '' : ' disabled') + '>Tiêu phút</button></section>';
+    const fu = M.funUseInfo(state, todayKey());
+    if (fu.total) {
+      h += '<section class="card spent"><div class="hd"><b>Hôm nay đã tiêu</b><span>' + fmt(fu.total) + ' phút</span></div>' +
+        '<div class="stack" role="img" aria-label="Tỷ lệ phút giải trí theo mục">' + fu.list.map((x) => '<i style="--a:' + APP_COLOR[x.id] + ';flex:' + x.minutes + '"></i>').join('') + '</div>' +
+        fu.list.map((x) => '<div class="rx" style="--a:' + APP_COLOR[x.id] + '"><span class="dot">' + ic('a_' + x.id) + '</span><span class="nm">' + esc(x.name) + '</span>' +
+          '<span class="mn">' + fmt(x.minutes) + "'</span><span class=\"pc\">" + Math.round(x.minutes * 100 / fu.total) + '%</span></div>').join('') + '</section>';
+    }
     h += '<section class="card boxc" style="margin-top:12px"><span class="bic">' + ICON.gift + '</span><div class="bt"><b>Hộp Huyền Thoại</b>' +
       '<span>' + (bi.opened ? 'Hôm nay đã mở' : bi.ready ? 'Sẵn sàng mở!' : 'Hôm nay ' + fmt(bi.progress) + '/' + bi.per + '\' ở nhà') + '</span>' + bar(bi.progress, bi.per, null, 'Phút học ở nhà hôm nay cho Hộp Huyền Thoại') + '</div>' +
       '<button type="button" class="btn sm gold" data-act="open-box"' + (bi.available ? '' : ' disabled') + '>Mở</button></section>';
@@ -664,14 +688,21 @@
     return h;
   };
 
+  const FUN_APP_NAME = {};
+  R.FUN_APPS.forEach((a) => { FUN_APP_NAME[a.id] = a.name; });
   async function openSpend() {
+    const last = state.meta.lastFunApp;
+    const pick = {
+      label: 'Dùng cho', value: FUN_APP_NAME[last] ? last : null,
+      items: R.FUN_APPS.map((a) => ({ id: a.id, name: a.name, icon: ic('a_' + a.id), color: APP_COLOR[a.id] || 'var(--ink)' })),
+    };
     const v = await numPad({
-      title: 'Tiêu phút giải trí', sub: 'Quỹ còn ' + fmt(state.fun) + '\'', icon: ICON.clock, tone: 'ok', unit: 'phút',
-      quick: [15, 30, 45, 60].filter((q) => q <= state.fun).map((q) => ({ v: q, label: q + '\'' })),
+      title: 'Tiêu phút giải trí', sub: 'Quỹ còn ' + fmt(state.fun) + "'", icon: ICON.clock, tone: 'ok', unit: 'phút', pick: pick,
+      quick: [5, 15, 30, 45].filter((q) => q <= state.fun).map((q) => ({ v: q, label: q + "'" })),
       check: (v) => v > state.fun ? { err: 'Quỹ chỉ còn ' + fmt(state.fun) + ' phút' } : { html: 'Còn lại ' + fmt(state.fun - v) + ' phút' },
-      okLabel: (v) => v ? 'Tiêu ' + fmt(v) + ' phút' : 'Tiêu',
+      okLabel: (v) => !pick.value ? 'Chọn mục giải trí' : v ? 'Tiêu ' + fmt(v) + ' phút · ' + FUN_APP_NAME[pick.value] : 'Tiêu',
     });
-    if (v) commit(M.spendFun(state, v, ctx()), 'Đã tiêu ' + v + ' phút giải trí. Chơi vui!');
+    if (v && pick.value) commit(M.spendFun(state, v, ctx(), pick.value), 'Tiêu ' + v + "' · " + FUN_APP_NAME[pick.value] + '. Chơi vui!');
   }
 
   function giftHTML(cls) {

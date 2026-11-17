@@ -32,6 +32,17 @@
     // Muffin trong Kho KHÔNG được đổi ra phút giải trí.
     FUN_MINUTES_PER_MUFFIN: 5,
 
+    // Các mục giải trí khi tiêu phút từ Quỹ giải trí (chọn 1 mục mỗi lần tiêu).
+    FUN_APPS: [
+      { id: 'tiktok', name: 'TikTok' },
+      { id: 'youtube', name: 'YouTube' },
+      { id: 'facebook', name: 'Facebook' },
+      { id: 'instagram', name: 'Instagram' },
+      { id: 'threads', name: 'Threads' },
+      { id: 'game', name: 'Game' },
+      { id: 'web', name: 'Website' },
+    ],
+
     // Hộp Huyền Thoại: trong 1 ngày học ở nhà đủ 200 phút thì mở được 1 lần (mỗi ngày tối đa 1 lần).
     // Tính riêng từng ngày: qua ngày mới đếm lại từ 0, không mở trong ngày thì mất lượt.
     // Mỗi lượt thưởng ngẫu nhiên 2, 4 hoặc 7 Muffin thường, xác suất đều nhau (weight bằng nhau).
@@ -148,6 +159,8 @@
   ];
   const ITEM = {};
   RULES.SHOP.forEach((it) => { ITEM[it.id] = it; });
+  const FUN_APP = {};
+  RULES.FUN_APPS.forEach((a) => { FUN_APP[a.id] = a; });
 
   const SCHEMA_VERSION = 2;
   const DAY_MS = 86400000;
@@ -227,7 +240,7 @@
       tasks: [],       // Kho nhiệm vụ: [{ id, text }]
       log: [],
       settings: { streakMin: RULES.STREAK_MIN_MINUTES },
-      meta: { lastExport: null, setupDone: false, welcomeDismissed: false },
+      meta: { lastExport: null, setupDone: false, welcomeDismissed: false, lastFunApp: null },
     };
   }
 
@@ -406,14 +419,28 @@
     return ok(s, entry);
   }
 
-  function spendFun(state, minutes, ctx) {
+  // app: id trong RULES.FUN_APPS (bắt buộc). Phút đã tiêu theo mục lưu ở days[ngày].funUse = { app: phút }.
+  function spendFun(state, minutes, ctx, app) {
     if (!Number.isInteger(minutes) || minutes <= 0) return fail('Số phút phải là số nguyên dương.');
     if (minutes > state.fun) return fail('Quỹ giải trí chỉ còn ' + state.fun + ' phút.');
+    if (!FUN_APP[app]) return fail('Hãy chọn mục giải trí.');
     const s = clone(state);
     s.fun -= minutes;
-    const entry = baseEntry('spendFun', ctx); entry.minutes = minutes;
+    const entry = baseEntry('spendFun', ctx); entry.minutes = minutes; entry.app = app;
+    const day = ensureDay(s, entry.date);
+    day.funUse = day.funUse || {};
+    day.funUse[app] = (day.funUse[app] || 0) + minutes;
+    s.meta.lastFunApp = app;
     pushLog(s, entry);
     return ok(s, entry);
+  }
+
+  // Phút giải trí đã tiêu trong ngày theo mục, xếp giảm dần: { total, list: [{ id, name, minutes }] }
+  function funUseInfo(state, date) {
+    const use = ((state.days[date] || {}).funUse) || {};
+    const list = RULES.FUN_APPS.filter((a) => use[a.id] > 0).map((a) => ({ id: a.id, name: a.name, minutes: use[a.id] }));
+    list.sort((a, b) => b.minutes - a.minutes);
+    return { total: list.reduce((n, x) => n + x.minutes, 0), list: list };
   }
 
   /* ---------- Hộp Huyền Thoại ---------- */
@@ -824,9 +851,12 @@
       case 'use':
         s.inventory[e.item] = (s.inventory[e.item] || 0) + 1;
         return null;
-      case 'spendFun':
+      case 'spendFun': {
         s.fun += e.minutes;
+        const use = e.app && (ensureDay(s, e.date).funUse || null);
+        if (use && use[e.app]) { use[e.app] = Math.max(0, use[e.app] - e.minutes); if (!use[e.app]) delete use[e.app]; }
         return null;
+      }
       case 'box':
         if (s.muffin < e.reward) return 'Cần trừ lại ' + e.reward + ' Muffin thường nhưng chỉ còn ' + s.muffin + '.';
         s.muffin -= e.reward; s.boxOpened = Math.max(0, s.boxOpened - 1);
@@ -892,7 +922,7 @@
       case 'convert': return 'Đổi ' + e.amount + ' Muffin → ' + e.minutes + ' phút giải trí';
       case 'buy': return 'Đổi "' + ITEM[e.item].name + '" (Kho -' + e.fromKho + ', Thường -' + e.fromMuffin + ')';
       case 'use': return 'Dùng "' + ITEM[e.item].bagName + '"';
-      case 'spendFun': return 'Tiêu ' + e.minutes + ' phút giải trí';
+      case 'spendFun': return 'Tiêu ' + e.minutes + ' phút giải trí' + (FUN_APP[e.app] ? ' · ' + FUN_APP[e.app].name : '');
       case 'box': return 'Mở Hộp Huyền Thoại → +' + e.reward + ' 🧁';
       case 'goalBonus': return 'Hoàn thành ' + RULES.GOAL_BONUS_COUNT + ' mục tiêu trong ngày → +' + e.amount + ' 🧁';
       case 'claimDay': return 'Nhận thưởng Chuỗi Ngày mốc ' + e.at + ': ' + rewardText(e.got);
@@ -1005,7 +1035,7 @@
     RULES, CATS, CAT_LABEL, CAT_SHORT, SHOP_GROUPS, ITEM, SCHEMA_VERSION,
     dateKey, addDays, daysBetween, parsePositiveInt, dayTotal,
     createInitialState, migrate,
-    logMinutes, deposit, convertFun, purchasePreview, buyItem, useItem, spendFun,
+    logMinutes, deposit, convertFun, purchasePreview, buyItem, useItem, spendFun, funUseInfo,
     boxInfo, pickBoxReward, openBox,
     computeDayStreak, computeHabitStreak, milestoneStatus, claimDayMilestone, claimHabitMilestone,
     addHabit, renameHabit, removeHabit, toggleHabitDay, funConvertInfo,

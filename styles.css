@@ -233,6 +233,20 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .np-kp button:active { filter: brightness(.92); transform: scale(.97); }
 .np-kp .e { background: transparent; color: var(--muted); }
 .np-kp .e svg { width: 26px; height: 26px; }
+/* Chọn mục (tiêu phút giải trí) */
+.apps-lb { font-size: 13px; font-weight: 800; color: var(--muted); margin: 4px 2px 8px; }
+.apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.app {
+  width: 100%; min-width: 0; height: 62px; border-radius: 16px; border: 2px solid transparent; background: var(--soft); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: inherit;
+  font-size: 12.5px; font-weight: 800; padding: 0;
+}
+.app span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.app svg { width: 22px; height: 22px; color: var(--a); }
+.app.on { border-color: var(--a); background: color-mix(in srgb, var(--a) 14%, var(--card)); }
+.has-pick .np-disp { margin: 0 0 10px; }
+.has-pick .np-n { font-size: 56px; }
+.has-pick .np-kp button { height: 50px; }
 .np-go { margin-top: 12px; width: 100%; min-height: 56px; border-radius: 18px; font-size: 17px; font-weight: 900; }
 
 /* ---------------- Mục tiêu ---------------- */
@@ -362,6 +376,19 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .fund .flb { font-size: 14px; font-weight: 700; opacity: .85; }
 .fund .fv { font-size: 54px; font-weight: 900; letter-spacing: -.03em; color: var(--hero-num); line-height: 1.1; margin: 2px 0 14px; }
 .fund .fv small { font-size: 20px; opacity: .65; letter-spacing: 0; }
+/* Hôm nay đã tiêu (Túi đồ) */
+.spent { margin-top: 12px; }
+.spent .hd { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.spent .hd b { font-size: 16px; font-weight: 800; }
+.spent .hd span { font-size: 14px; font-weight: 700; color: var(--muted); }
+.stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; margin-bottom: 8px; }
+.stack i { background: var(--a); min-width: 4px; }
+.rx { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-weight: 700; }
+.rx .dot { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: color-mix(in srgb, var(--a) 14%, var(--card)); color: var(--a); flex: none; }
+.rx .dot svg { width: 18px; height: 18px; }
+.rx .nm { flex: 1; min-width: 0; }
+.rx .mn { font-weight: 900; }
+.rx .pc { width: 42px; text-align: right; color: var(--muted); font-size: 13px; }
 .boxc { display: flex; align-items: center; gap: 14px; }
 .boxc .bic { width: 52px; height: 52px; border-radius: 16px; background: var(--gold); color: var(--gold-ink); display: grid; place-items: center; flex: none; }
 .boxc .bic svg { width: 26px; height: 26px; }
