@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.10.1';
+  const APP_VERSION = '1.11.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -438,10 +438,13 @@
   function goalBonusHTML() {
     const b = M.goalBonusInfo(state, todayKey());
     const shown = Math.min(b.done, b.need);
+    const allDone = !b.reward;
+    const t1 = allDone ? 'Đã nhận +' + b.got + ' Muffin'
+      : (b.got ? 'Đã nhận +' + b.got + ' · ' : '') + 'Xong ' + b.need + ' mục → +' + b.reward + ' Muffin';
+    const t2 = allDone ? 'Hôm nay đã đủ ' + b.need + ' mục' : 'Còn ' + (b.need - shown) + ' mục';
     return '<section class="card ringcard" id="goalBonus" aria-label="Tiến độ thưởng mục tiêu ' + shown + ' trên ' + b.need + '">' +
       ringSVG(56, 6, shown / b.need, shown + '/' + b.need) +
-      '<div><div class="rt1">' + (b.got ? 'Đã nhận +' + b.got + ' Muffin' : 'Xong ' + b.need + ' mục → +' + b.reward + ' Muffin') + '</div>' +
-      '<div class="rt2">' + (b.got ? 'Hôm nay đã đủ ' + b.need + ' mục' : 'Còn ' + (b.need - shown) + ' mục') + '</div></div></section>';
+      '<div><div class="rt1">' + t1 + '</div><div class="rt2">' + t2 + '</div></div></section>';
   }
   VIEWS.goals = function () {
     const t = todayKey();
@@ -1018,7 +1021,7 @@
       '<li>Thưởng phút → Quỹ giải trí. Thưởng là món → Túi đồ. Muffin từ hộp → Muffin thường.</li></ul></section>' +
       '<section class="card"><h3>8. Mục tiêu, nhật ký, sao lưu</h3><ul>' +
       '<li><b>Mục tiêu</b>: mỗi ngày thêm bao nhiêu mục cũng được. Chọn ngày ở dải ngày để sửa mục tiêu của hôm nay và ' + (R.GOAL_PLAN_DAYS - 1) + ' ngày tới. Chỉ tick được mục tiêu của hôm nay. Nút đồng hồ ở góc trên để xem lại mục tiêu 60 ngày gần nhất.</li>' +
-      '<li><b>Thưởng mục tiêu</b>: hoàn thành đủ <b>' + R.GOAL_BONUS_COUNT + ' mục tiêu</b> trong ngày → tự cộng <b>+' + R.GOAL_BONUS_MUFFIN + ' Muffin thường</b> (mỗi ngày 1 lần). Bỏ tick xuống dưới ' + R.GOAL_BONUS_COUNT + ' thì bị trừ lại.</li>' +
+      '<li><b>Thưởng mục tiêu</b>: trong ngày ' + R.GOAL_BONUS_TIERS.map((x, i) => 'hoàn thành đủ <b>' + x.count + ' mục tiêu</b> → ' + (i ? 'thêm ' : 'tự cộng ') + '<b>+' + x.muffin + ' Muffin thường</b>').join('; ') + ' (mỗi mốc 1 lần/ngày). Bỏ tick xuống dưới mốc thì thưởng mốc đó bị trừ lại.</li>' +
       '<li><b>Kho nhiệm vụ</b>: điền sẵn nhiều nhiệm vụ (mỗi dòng 1 cái), rồi chạm để lấy ra làm mục tiêu cho ngày đang chọn.</li>' +
       '<li>Mọi hành động đều vào Nhật ký; có Hoàn tác và xóa từng bản ghi (tự cộng/trừ lại điểm).</li>' +
       '<li>Dữ liệu chỉ nằm trên máy này. Nên Xuất JSON ít nhất mỗi tuần (app sẽ nhắc sau ' + R.BACKUP_REMIND_DAYS + ' ngày).</li></ul></section>' +
@@ -1299,7 +1302,7 @@
       if (gb) gb.outerHTML = goalBonusHTML();
       if (res.bonus > 0) {
         const entry = res.entry;
-        toast('Xong ' + R.GOAL_BONUS_COUNT + ' mục tiêu hôm nay! +' + res.bonus + ' Muffin', 'success', { label: 'Hoàn tác', fn: () => undoEntry(entry.id) });
+        toast('Xong ' + (entry.tier || R.GOAL_BONUS_COUNT) + ' mục tiêu hôm nay! +' + res.bonus + ' Muffin', 'success', { label: 'Hoàn tác', fn: () => undoEntry(entry.id) });
       } else if (res.bonus < 0) toast('Đã trừ lại ' + (-res.bonus) + ' Muffin thưởng mục tiêu', 'info');
       return;
     }

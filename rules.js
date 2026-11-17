@@ -147,6 +147,11 @@
     // Thưởng mục tiêu: hoàn thành đủ 10 mục tiêu trong 1 ngày → +2 Muffin thường (mỗi ngày 1 lần).
     GOAL_BONUS_COUNT: 10,
     GOAL_BONUS_MUFFIN: 2,
+    // Các mốc thưởng mục tiêu trong ngày, theo thứ tự (cộng dồn): đủ 10 mục +2, đủ 15 mục thêm +1.
+    GOAL_BONUS_TIERS: [
+      { count: 10, muffin: 2 },
+      { count: 15, muffin: 1 },
+    ],
     // Kho nhiệm vụ: tối đa 300 nhiệm vụ.
     TASK_BANK_MAX: 300,
     // Giữ tối đa bấy nhiêu bản ghi nhật ký (cũ hơn thì không hoàn tác được nữa).
@@ -776,36 +781,61 @@
     const b = settleGoalBonus(s, date, ctx);
     if (b.error) return fail(b.error);
     const r = ok(s, b.entry);
-    r.bonus = b.entry ? b.entry.amount : b.removed ? -b.removed : 0;
+    r.bonus = b.gained ? b.gained : b.removed ? -b.removed : 0;
     return r;
   }
-  // Thông tin thưởng mục tiêu của 1 ngày
+  // Số mốc thưởng đã nhận, suy từ tổng Muffin thưởng đã cộng trong ngày (các mốc cộng dồn theo thứ tự)
+  function goalBonusLevel(got) {
+    const tiers = RULES.GOAL_BONUS_TIERS;
+    let level = 0, sum = 0;
+    while (level < tiers.length && sum + tiers[level].muffin <= got) { sum += tiers[level].muffin; level++; }
+    return level;
+  }
+  // Thông tin thưởng mục tiêu của 1 ngày.
+  // need/reward: mốc kế tiếp chưa nhận (hết mốc thì là mốc cuối, reward 0); total: tổng Muffin tối đa trong ngày
   function goalBonusInfo(state, date) {
+    const tiers = RULES.GOAL_BONUS_TIERS;
     const done = goalsOf(state, date).filter((g) => g.done).length;
     const got = (state.days[date] && state.days[date].goalBonus) || 0;
-    return { done: done, need: RULES.GOAL_BONUS_COUNT, reward: RULES.GOAL_BONUS_MUFFIN, got: got };
+    const level = goalBonusLevel(got);
+    const next = tiers[level] || null;
+    return {
+      done: done, got: got, level: level, tiers: tiers,
+      need: next ? next.count : tiers[tiers.length - 1].count,
+      reward: next ? next.muffin : 0,
+      prev: level > 0 ? tiers[level - 1].count : 0,
+      total: tiers.reduce((n, x) => n + x.muffin, 0),
+    };
   }
-  // Đủ 10 mục hoàn thành → cộng thưởng (1 lần/ngày). Xuống dưới 10 → trừ lại và bỏ bản ghi thưởng.
+  // Đủ số mục của mốc kế tiếp → cộng thưởng mốc đó (mỗi mốc 1 lần/ngày, có bản ghi riêng).
+  // Bỏ tick xuống dưới mốc đã nhận → trừ lại thưởng của mốc đó và bỏ bản ghi.
   function settleGoalBonus(s, date, ctx) {
-    const info = goalBonusInfo(s, date);
-    if (info.done >= info.need && !info.got && ctx) {
-      const amount = RULES.GOAL_BONUS_MUFFIN;
+    const tiers = RULES.GOAL_BONUS_TIERS;
+    let info = goalBonusInfo(s, date);
+    let gained = 0, removed = 0, entry = null;
+    while (ctx && info.level < tiers.length && info.done >= tiers[info.level].count) {
+      const t = tiers[info.level];
       const day = ensureDay(s, date);
-      s.muffin += amount; day.earned += amount; day.goalBonus = amount;
-      const entry = baseEntry('goalBonus', ctx); entry.date = date; entry.amount = amount;
+      s.muffin += t.muffin; day.earned += t.muffin; day.goalBonus = (day.goalBonus || 0) + t.muffin;
+      entry = baseEntry('goalBonus', ctx); entry.date = date; entry.amount = t.muffin; entry.tier = t.count;
+      if (gained) entry.id += '_' + t.count;
       pushLog(s, entry);
-      return { entry: entry };
+      gained += t.muffin;
+      info = goalBonusInfo(s, date);
     }
-    if (info.done < info.need && info.got) {
-      if (s.muffin < info.got) return { error: 'Thưởng ' + info.got + ' Muffin của mục tiêu hôm nay đã được tiêu, không bỏ tick được.' };
+    while (info.level > 0 && info.done < tiers[info.level - 1].count) {
+      const t = tiers[info.level - 1];
+      if (s.muffin < t.muffin) return { error: 'Thưởng ' + t.muffin + ' Muffin của mục tiêu hôm nay đã được tiêu, không bỏ tick được.' };
       const day = ensureDay(s, date);
-      s.muffin -= info.got; clampDown(day, 'earned', info.got); day.goalBonus = 0;
+      s.muffin -= t.muffin; clampDown(day, 'earned', t.muffin); clampDown(day, 'goalBonus', t.muffin);
       for (let i = s.log.length - 1; i >= 0; i--) {
-        if (s.log[i].type === 'goalBonus' && s.log[i].date === date) { s.log.splice(i, 1); break; }
+        const e = s.log[i];
+        if (e.type === 'goalBonus' && e.date === date && (e.tier || RULES.GOAL_BONUS_COUNT) === t.count) { s.log.splice(i, 1); break; }
       }
-      return { removed: info.got };
+      removed += t.muffin;
+      info = goalBonusInfo(s, date);
     }
-    return {};
+    return { entry: entry, gained: gained, removed: removed };
   }
   // Chép tên các mục tiêu từ một ngày sang ngày khác (không chép dấu tick)
   function copyGoals(state, fromDate, toDate, today, ctx) {
@@ -920,7 +950,7 @@
       case 'goalBonus': {
         if (s.muffin < e.amount) return 'Cần trừ lại ' + e.amount + ' Muffin thường nhưng chỉ còn ' + s.muffin + '.';
         const day = ensureDay(s, e.date);
-        s.muffin -= e.amount; clampDown(day, 'earned', e.amount); day.goalBonus = 0;
+        s.muffin -= e.amount; clampDown(day, 'earned', e.amount); clampDown(day, 'goalBonus', e.amount);
         return null;
       }
       case 'claimDay':
@@ -978,7 +1008,7 @@
       case 'use': return 'Dùng "' + ITEM[e.item].bagName + '"';
       case 'spendFun': return 'Tiêu ' + e.minutes + ' phút giải trí' + (FUN_APP[e.app] ? ' · ' + FUN_APP[e.app].name : '');
       case 'box': return 'Mở Hộp Huyền Thoại → +' + e.reward + ' 🧁';
-      case 'goalBonus': return 'Hoàn thành ' + RULES.GOAL_BONUS_COUNT + ' mục tiêu trong ngày → +' + e.amount + ' 🧁';
+      case 'goalBonus': return 'Hoàn thành ' + (e.tier || RULES.GOAL_BONUS_COUNT) + ' mục tiêu trong ngày → +' + e.amount + ' 🧁';
       case 'claimDay': return 'Nhận thưởng Chuỗi Ngày mốc ' + e.at + ': ' + rewardText(e.got);
       case 'claimHabit': return 'Nhận thưởng Chuỗi Thói Quen "' + e.habitName + '" mốc ' + e.at + ': ' + rewardText(e.got);
       default: return e.type;
