@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Muffin: nạp dữ liệu mẫu</title>
+<!-- CHỈ DÙNG KHI THỬ TRÊN MÁY: ghi đè dữ liệu bằng dữ liệu mẫu rồi mở app. Không mở trang này trên iPhone. -->
+<script src="../rules.js"></script>
+<script>
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    document.write('Trang này chỉ dùng để thử trên máy tính. Không ghi đè dữ liệu.');
+    throw new Error('demo chỉ chạy trên localhost');
+  }
+  const M = window.MuffinRules;
+  const now = Date.now();
+  const today = M.dateKey(now);
+  let s = M.createInitialState(now - 40 * 86400000);
+  let n = 0;
+  const at = (daysAgo, h) => now - daysAgo * 86400000 - h * 3600000;
+  const c = (t, extra) => Object.assign({ now: t, id: 'd' + (++n) }, extra || {});
+  const plan = [[90, 40, 0, 30], [120, 0, 60, 0], [60, 80, 30, 45], [45, 0, 0, 60], [150, 40, 0, 0], [30, 60, 90, 30], [70, 0, 45, 0]];
+  for (let d = 29; d >= 0; d--) {
+    const p = plan[d % 7];
+    if (d === 9) continue; // một ngày nghỉ để thấy chuỗi đứt
+    M.CATS.forEach((cat, i) => { if (p[i]) { const r = M.logMinutes(s, cat, p[i], c(at(d, 3 + i))); if (r.ok) s = r.state; } });
+  }
+  s.days[today] = s.days[today] || { home: 0, class: 0, work: 0, gym: 0, earned: 0, spent: 0 };
+  let r = M.openBox(s, c(at(3, 1), { rand: 0.9 })); if (r.ok) s = r.state;
+  r = M.deposit(s, 60, c(at(2, 1))); if (r.ok) s = r.state;
+  r = M.buyItem(s, 'movie', c(at(1, 2))); if (r.ok) s = r.state;
+  r = M.convertFun(s, 10, c(at(1, 1))); if (r.ok) s = r.state;
+  r = M.addHabit(s, 'Đọc sách 20 trang', c(now, { id: 'hA' })); s = r.state;
+  r = M.addHabit(s, 'Uống đủ 2 lít nước', c(now, { id: 'hB' })); s = r.state;
+  for (let i = 1; i <= 8; i++) s.habits[0].done.push(M.addDays(today, -i));
+  for (let i = 0; i <= 3; i++) s.habits[1].done.push(M.addDays(today, -i));
+  s.habits.forEach((h) => h.done.sort());
+  s = M.addGoals(s, today, ['Ôn chương 3 Web Strategy', 'Tập gym chân', 'Làm bài tập nhóm', 'Đọc 20 trang sách'], today, c(now, { id: 'gA' })).state;
+  s = M.addGoals(s, M.addDays(today, 1), ['Ôn chương 4', 'Đi bơi'], today, c(now, { id: 'gB' })).state;
+  s = M.addTasks(s, ['Ôn chương 3 Web Strategy', 'Tập gym chân', 'Đọc 20 trang sách', 'Làm flashcard từ vựng', 'Dọn bàn học'], c(now, { id: 'tA' })).state;
+  r = M.deposit(s, 5, c(now - 60000)); if (r.ok) s = r.state;
+  s = M.toggleGoal(s, today, s.goalDays[today][1].id, today, c(now)).state;
+  s.inventory.cafe = 1; s.inventory.buy150 = 1;
+  s.meta.setupDone = true; s.meta.lastExport = now - 9 * 86400000;
+  localStorage.setItem('muffin.state', JSON.stringify(s));
+  const th = new URLSearchParams(location.search).get('theme');
+  if (th) localStorage.setItem('muffin.theme', th);
+  location.replace('../index.html' + (location.hash || ''));
+</script>
