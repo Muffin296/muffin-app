@@ -130,6 +130,7 @@
     STREAK_MIN_MINUTES: 60,
     // Ngày tính theo giờ Asia/Ho_Chi_Minh (UTC+7, không có giờ mùa hè).
     TZ_OFFSET_HOURS: 7,
+    GOAL_DAY_START_HOURS: 4, // Mục tiêu: ngày mới bắt đầu lúc 4h sáng (trước 4h vẫn là mục tiêu của hôm trước)
     LATE_LOG_HOURS: 4, // 0h tới trước 4h sáng được chọn ghi phút (và mở hộp) cho hôm qua
     // Mỗi lần ghi tối đa 600 phút.
     MAX_MINUTES_PER_ENTRY: 600,
@@ -186,6 +187,10 @@
   // Ngày (YYYY-MM-DD) theo giờ Việt Nam từ mốc thời gian (ms)
   function dateKey(ms) {
     return new Date(ms + RULES.TZ_OFFSET_HOURS * 3600000).toISOString().slice(0, 10);
+  }
+  // Ngày của mục tiêu: đổi ngày lúc GOAL_DAY_START_HOURS giờ sáng thay vì 0h
+  function goalDayKey(ms) {
+    return dateKey(ms - RULES.GOAL_DAY_START_HOURS * 3600000);
   }
   // Trong khung 0h tới trước LATE_LOG_HOURS sáng: trả về ngày hôm qua (được ghi bù), ngoài khung: null
   function lateYesterday(ms) {
@@ -730,6 +735,7 @@
   // Mỗi ngày có danh sách mục tiêu riêng (không giới hạn số mục). Sang ngày mới là danh sách mới, tick cũ không mang theo.
   // Hoàn thành đủ 10 mục tiêu trong ngày → tự cộng 2 Muffin thường; bỏ tick xuống dưới 10 thì trừ lại.
   // Sửa được mục tiêu của hôm nay và 6 ngày tới; chỉ tick được mục tiêu của hôm nay.
+  // "Hôm nay" của mục tiêu do giao diện truyền vào, tính bằng goalDayKey (đổi ngày lúc 4h sáng).
   function goalsOf(state, date) { return (state.goalDays && state.goalDays[date]) || []; }
   function planDates(today) {
     const out = [];
@@ -1157,7 +1163,7 @@
 
   return {
     RULES, CATS, CAT_LABEL, CAT_SHORT, SHOP_GROUPS, ITEM, SCHEMA_VERSION,
-    dateKey, addDays, daysBetween, parsePositiveInt, dayTotal, lateYesterday, boxDay,
+    dateKey, addDays, daysBetween, parsePositiveInt, dayTotal, lateYesterday, boxDay, goalDayKey,
     createInitialState, migrate,
     logMinutes, deposit, convertFun, purchasePreview, buyItem, useItem, spendFun, funUseInfo,
     boxInfo, pickBoxReward, openBox,
