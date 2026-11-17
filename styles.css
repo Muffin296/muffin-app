@@ -1,6 +1,6 @@
 /* Muffin Study Game: giao diện v1.3 (sáng = nâu kem, tối = đen chanh). Ưu tiên iPhone 375-430px */
 :root {
-  --bg: #FAF5EE; --card: #FFFFFF; --soft: #F3ECE3; --line: #EFE6DA; --ink: #2A1E16; --muted: #725E4F; --cb: #D3C3AF;
+  --bg: #FAF5EE; --card: #FFFFFF; --soft: #F3ECE3; --line: #EFE6DA; --ink: #2A1E16; --muted: #66513F; --cb: #D3C3AF;
   --hero-bg: #2A1E16; --hero-ink: #FFF7ED; --hero-num: #FFF7ED; --hero-pill: rgba(255, 255, 255, .1); --hero-pill-ink: #FBBF77;
   --pri: #2A1E16; --pri-ink: #FFFFFF; --hl: #FBBF77; --hl-ink: #2A1E16;
   --ok: #15803D; --ok-bg: #DCFCE7; --bad: #B91C1C; --bad-bg: #FEE2E2; --warn: #9A4A06; --warn-bg: #FEF3C7;
@@ -23,7 +23,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0B0E13; --card: #151A21; --soft: #1F2630; --line: #232A33; --ink: #F3F4F6; --muted: #9CA3AF; --cb: #3A4350;
+    --bg: #0B0E13; --card: #151A21; --soft: #1F2630; --line: #232A33; --ink: #F3F4F6; --muted: #B3B9C3; --cb: #3A4350;
     --hero-bg: radial-gradient(130% 130% at 100% 0%, #2B3A12 0%, #151A21 60%); --hero-ink: #E5E7EB; --hero-num: #BEF264; --hero-pill: #1F2630; --hero-pill-ink: #E5E7EB;
     --pri: #BEF264; --pri-ink: #0B0E13; --hl: #BEF264; --hl-ink: #0B0E13;
     --ok: #BEF264; --ok-bg: rgba(190, 242, 100, .14); --bad: #FCA5A5; --bad-bg: rgba(248, 113, 113, .16); --warn: #FCD34D; --warn-bg: rgba(251, 191, 36, .14);
@@ -42,7 +42,7 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0B0E13; --card: #151A21; --soft: #1F2630; --line: #232A33; --ink: #F3F4F6; --muted: #9CA3AF; --cb: #3A4350;
+  --bg: #0B0E13; --card: #151A21; --soft: #1F2630; --line: #232A33; --ink: #F3F4F6; --muted: #B3B9C3; --cb: #3A4350;
   --hero-bg: radial-gradient(130% 130% at 100% 0%, #2B3A12 0%, #151A21 60%); --hero-ink: #E5E7EB; --hero-num: #BEF264; --hero-pill: #1F2630; --hero-pill-ink: #E5E7EB;
   --pri: #BEF264; --pri-ink: #0B0E13; --hl: #BEF264; --hl-ink: #0B0E13;
   --ok: #BEF264; --ok-bg: rgba(190, 242, 100, .14); --bad: #FCA5A5; --bad-bg: rgba(248, 113, 113, .16); --warn: #FCD34D; --warn-bg: rgba(251, 191, 36, .14);
@@ -78,10 +78,10 @@ svg { flex: none; display: block; }
 
 /* ---------------- Khung trang ---------------- */
 .app { max-width: 560px; margin: 0 auto; }
-.view { padding: calc(var(--safe-top) + 8px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 112px) calc(var(--safe-left) + 18px); }
+.view { padding: calc(var(--safe-top) + 22px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 112px) calc(var(--safe-left) + 18px); }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 6px 2px 16px; min-height: 52px; }
 .top .tt { min-width: 0; flex: 1; }
-.top .sub { font-size: 14px; font-weight: 600; color: var(--muted); }
+.top .sub { font-size: 15px; font-weight: 700; color: var(--muted); }
 .top h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
 .top .ibs { display: flex; gap: 8px; }
 .ib {
