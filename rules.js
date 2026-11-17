@@ -1020,6 +1020,28 @@
     }
     return out;
   }
+  // Thống kê giải trí n ngày gần nhất (tính cả hôm nay):
+  // { days:[{ date, use:{app:phút}, total }], per:{app:phút}, list:[{id,name,minutes}] giảm dần, fun, study, avg }
+  function funStatsRange(state, today, n) {
+    const days = [], per = {};
+    let fun = 0, study = 0;
+    for (let i = n - 1; i >= 0; i--) {
+      const d = addDays(today, -i);
+      const day = state.days[d] || emptyDay();
+      const use = {};
+      let total = 0;
+      Object.keys(day.funUse || {}).forEach((a) => {
+        const v = day.funUse[a] || 0;
+        if (!FUN_APP[a] || v <= 0) return;
+        use[a] = v; total += v; per[a] = (per[a] || 0) + v;
+      });
+      fun += total; study += dayTotal(day);
+      days.push({ date: d, use: use, total: total });
+    }
+    const list = RULES.FUN_APPS.filter((a) => per[a.id] > 0).map((a) => ({ id: a.id, name: a.name, minutes: per[a.id] }));
+    list.sort((a, b) => b.minutes - a.minutes);
+    return { days: days, per: per, list: list, fun: fun, study: study, avg: Math.round(fun / n) };
+  }
   function statsAllTime(state) {
     let earned = 0, spent = 0;
     Object.keys(state.days).forEach((k) => { earned += state.days[k].earned || 0; spent += state.days[k].spent || 0; });
@@ -1042,6 +1064,6 @@
     goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, goalBonusInfo, copyGoals, pruneGoalDays,
     addTasks, editTask, removeTask, addTasksToDay,
     deleteEntry, undoLast, describeEntry, rewardText,
-    applySetup, exportData, importData, statsRange, statsAllTime, needsBackupReminder,
+    applySetup, exportData, importData, statsRange, funStatsRange, statsAllTime, needsBackupReminder,
   };
 });

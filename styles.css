@@ -452,6 +452,14 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 13.5px; font-weight: 600; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+/* Học và chơi (Thống kê) */
+.vs { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 3px; margin: 4px 0 10px; }
+.vs i { display: block; min-width: 4px; }
+.vs-lb { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 700; }
+.vs-lb span { display: inline-flex; align-items: center; gap: 6px; }
+.vs-lb i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+.vs-note { margin-top: 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.vs-note b { color: var(--ink); }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .tile { background: var(--soft); border-radius: 16px; padding: 12px; }
 .tile span { font-size: 13px; color: var(--muted); font-weight: 700; }

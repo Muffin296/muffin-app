@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.5.1';
+  const APP_VERSION = '1.6.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -67,8 +67,9 @@
   // Biểu tượng và màu cho từng món trong Cửa hàng (rules.js giữ emoji gốc, ở đây dùng icon nét)
   const ITEM_LOOK = {
     cafe: ['coffee', 'work'], net: ['game', 'class'], food: ['food', 'gym'], movie: ['film', 'home'],
-    buy100: ['tag', 'kho'], buy150: ['tag', 'kho'], buy250: ['tag', 'kho'], buy350: ['tag', 'kho'],
-    buy500: ['gift', 'bx'], buy700: ['gift', 'bx'], buy1m: ['gem', 'class'], buy1m5: ['gem', 'class'], buy2m5: ['gem', 'class'],
+    buy100: ['tag', 'ok'], buy150: ['tag', 'ok'], buy250: ['tag', 'ok'],
+    buy350: ['gift', 'class'], buy500: ['gift', 'class'], buy700: ['gift', 'class'],
+    buy1m: ['gem', 'gym'], buy1m5: ['gem', 'gym'], buy2m5: ['gem', 'gym'],
     skate: ['sparkle', 'home'], travel: ['plane', 'kho'], wish: ['star', 'fl'],
   };
   const itemLook = (id) => ITEM_LOOK[id] || ['tag', 'kho'];
@@ -777,8 +778,63 @@
       '<div class="tile r"><span>Đã tiêu</span><b>-' + fmt(sum.spent) + '</b></div>' +
       '<div class="tile"><span>Ngày có ghi</span><b>' + active + '/' + n + '</b></div>' +
       '<div class="tile"><span>TB mỗi ngày</span><b>' + fmt(Math.round(sum.total / n)) + '\'</b></div>' +
-      '</div><p class="muted small" style="margin-top:10px">Từ trước tới nay: kiếm ' + fmt(all.earned) + ', tiêu ' + fmt(all.spent) + ' Muffin</p></section>';
+      '</div><p class="muted small" style="margin-top:10px">Từ trước tới nay: kiếm ' + fmt(all.earned) + ', tiêu ' + fmt(all.spent) + ' Muffin</p></section>' +
+      funStatsHTML(n);
   };
+
+  // Thống kê giải trí theo mục (TikTok, YouTube...) trong n ngày
+  function funStatsHTML(n) {
+    const fs = M.funStatsRange(state, todayKey(), n);
+    let h = '<div class="sec"><h2>Giải trí</h2><span>' + fmt(fs.fun) + '\'</span></div>';
+    if (!fs.fun) return h + '<section class="card"><p class="empty" style="padding:8px 4px">Chưa tiêu phút giải trí nào trong ' + n + ' ngày này</p></section>';
+    h += '<section class="card"><h3>Phút giải trí theo ngày</h3>' + funChartSVG(fs) +
+      '<div class="legend">' + fs.list.map((x) => '<span><i style="background:' + APP_COLOR[x.id] + '"></i>' + esc(x.name) + ' <b>' + fmt(x.minutes) + '</b></span>').join('') + '</div></section>';
+    const ratio = Math.round(fs.study / fs.fun * 10) / 10;
+    h += '<section class="card"><h3>Học và chơi</h3>' +
+      '<div class="vs" role="img" aria-label="Học ' + fs.study + ' phút, chơi ' + fs.fun + ' phút">' +
+      (fs.study ? '<i style="flex:' + fs.study + ';background:var(--ok)"></i>' : '') + '<i style="flex:' + fs.fun + ';background:var(--gold)"></i></div>' +
+      '<div class="vs-lb"><span><i style="background:var(--ok)"></i>Học ' + fmt(fs.study) + '\'</span><span><i style="background:var(--gold)"></i>Chơi ' + fmt(fs.fun) + '\'</span></div>' +
+      '<p class="vs-note">' + (fs.study ? 'Cứ <b>' + fmt(ratio) + ' phút học</b> thì có 1 phút chơi' : 'Chưa ghi phút học nào') + '</p></section>';
+    h += '<section class="card spent"><div class="hd"><b>Dùng vào đâu</b><span>TB ' + fmt(fs.avg) + '\'/ngày</span></div>' +
+      '<div class="stack" role="img" aria-label="Tỷ lệ phút giải trí theo mục">' + fs.list.map((x) => '<i style="--a:' + APP_COLOR[x.id] + ';flex:' + x.minutes + '"></i>').join('') + '</div>' +
+      fs.list.map((x) => '<div class="rx" style="--a:' + APP_COLOR[x.id] + '"><span class="dot">' + ic('a_' + x.id) + '</span><span class="nm">' + esc(x.name) + '</span>' +
+        '<span class="mn">' + fmt(x.minutes) + "'</span><span class=\"pc\">" + Math.round(x.minutes * 100 / fs.fun) + '%</span></div>').join('') + '</section>';
+    return h;
+  }
+
+  function funChartSVG(fs) {
+    const data = fs.days;
+    const W = 340, H = 170, L = 30, Rr = 6, T = 10, B = 24;
+    const pw = W - L - Rr, ph = H - T - B;
+    const maxV = Math.max(30, ...data.map((d) => d.total));
+    const step = maxV <= 60 ? 15 : maxV <= 120 ? 30 : maxV <= 240 ? 60 : 120;
+    const top = Math.ceil(maxV / step) * step;
+    const y = (v) => T + ph - (v / top) * ph;
+    const order = fs.list.map((x) => x.id);
+    let g = '';
+    for (let v = 0; v <= top; v += step) {
+      g += '<line class="' + (v ? 'gl' : 'g0') + '" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + y(v).toFixed(1) + '" y2="' + y(v).toFixed(1) + '" stroke-width="1"' + (v ? ' stroke-dasharray="3 3"' : '') + '/>' +
+        '<text x="' + (L - 5) + '" y="' + (y(v) + 3.5).toFixed(1) + '" text-anchor="end">' + v + '</text>';
+    }
+    const slot = pw / data.length;
+    const bw = Math.max(4, Math.min(26, slot * 0.62));
+    data.forEach((d, i) => {
+      const x = L + slot * i + (slot - bw) / 2;
+      let acc = 0, bars = '';
+      order.forEach((a) => {
+        const v = d.use[a];
+        if (!v) return;
+        const y0 = y(acc), y1 = y(acc + v);
+        acc += v;
+        bars += '<rect x="' + x.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0.5, y0 - y1).toFixed(1) + '" fill="' + APP_COLOR[a] + '"' + (acc === d.total ? ' rx="3"' : '') + '/>';
+      });
+      const title = fmtDate(d.date) + ': ' + d.total + ' phút giải trí' + (d.total ? ' (' + order.filter((a) => d.use[a]).map((a) => FUN_APP_NAME[a] + ' ' + d.use[a]).join(', ') + ')' : '');
+      g += '<g><title>' + esc(title) + '</title><rect x="' + (L + slot * i).toFixed(1) + '" y="' + T + '" width="' + slot.toFixed(1) + '" height="' + ph + '" fill="transparent"/>' + bars + '</g>';
+      const showLabel = data.length <= 7 || i % 5 === (data.length - 1) % 5;
+      if (showLabel) g += '<text x="' + (L + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + (data.length <= 7 ? weekday(d.date) : fmtShort(d.date)) + '</text>';
+    });
+    return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Biểu đồ cột phút giải trí theo ngày, chia theo mục">' + g + '</svg>';
+  }
 
   function chartSVG(data) {
     const W = 340, H = 210, L = 34, Rr = 6, T = 10, B = 26;
