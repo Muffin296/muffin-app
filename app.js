@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.6.0';
+  const APP_VERSION = '1.7.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -50,6 +50,8 @@
     sprout: I('<path d="M12 21v-9M12 12C12 7 8 5 4 5c0 4 3 7 8 7zM12 12c0-4 3-6 7-6 0 4-3 6-7 6z"/>'),
     upload: I('<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>'),
     lock: I('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    cal: I('<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+    hist: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5"/><path d="M3.5 3.5v5h5M12 7.5V12l3 2"/>'),
     // Mục giải trí (icon nét tự vẽ, không phải logo)
     a_tiktok: I('<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>'),
     a_youtube: I('<rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/>'),
@@ -126,7 +128,7 @@
   let stack = [];
   const todayKey = () => M.dateKey(Date.now());
   let lastToday = todayKey();
-  const ui = { statsRange: 7, logLimit: 60, bump: false, goalDate: lastToday, shopGroup: 'small', streakTab: 'day' };
+  const ui = { statsRange: 7, statsFrom: null, statsTo: null, logLimit: 60, bump: false, goalDate: lastToday, shopGroup: 'small', streakTab: 'day' };
   state = M.pruneGoalDays(state, lastToday);
 
   function ctx() {
@@ -447,7 +449,7 @@
     const items = M.goalsOf(state, d);
     const isToday = d === t;
     const sub = isToday ? 'Hôm nay, ' + fmtShort(d) : (M.daysBetween(t, d) === 1 ? 'Ngày mai, ' : weekdayLong(d) + ', ') + fmtShort(d);
-    let h = topMain('Mục tiêu', sub, goBtn('tasks', ICON.log, 'Kho nhiệm vụ'));
+    let h = topMain('Mục tiêu', sub, goBtn('goalsPast', ICON.hist, 'Mục tiêu ngày trước') + goBtn('tasks', ICON.log, 'Kho nhiệm vụ'));
     h += '<div class="days" role="group" aria-label="Chọn ngày">' + M.planDates(t).map((x) => {
       const n = M.goalsOf(state, x).length;
       return '<button type="button" class="' + (x === d ? 'on' : '') + '" data-act="goal-day" data-date="' + x + '" aria-pressed="' + (x === d) + '" aria-label="' + dayLabel(x) + ', ' + n + ' mục">' +
@@ -477,6 +479,23 @@
           (!free.length ? '<span class="muted small">Đã thêm hết</span>' : '')
         : '<button type="button" class="more" data-act="go" data-view="tasks">' + ICON.plus + '<span>Tạo Kho nhiệm vụ</span></button>') + '</div>';
     return h;
+  };
+
+  // Xem lại mục tiêu các ngày đã qua (chỉ xem, app giữ 60 ngày gần nhất)
+  VIEWS.goalsPast = function () {
+    const t = todayKey();
+    const dates = Object.keys(state.goalDays || {}).filter((d) => d < t && M.goalsOf(state, d).length).sort().reverse();
+    let h = topSub('Mục tiêu ngày trước');
+    if (!dates.length) return h + '<section class="card empty">Chưa có mục tiêu của ngày nào trước hôm nay</section>';
+    dates.forEach((d) => {
+      const items = M.goalsOf(state, d);
+      const done = items.filter((g) => g.done).length;
+      const got = M.goalBonusInfo(state, d).got;
+      h += '<section class="card hx"><div class="hx-hd"><b>' + dayLabel(d) + '</b><span class="' + (done === items.length ? 'ok' : '') + '">' + done + '/' + items.length + ' xong' + (got ? ' · +' + got + ' Muffin' : '') + '</span></div>' +
+        bar(done, items.length, null, 'Hoàn thành ' + done + ' trên ' + items.length + ' mục') +
+        '<ul class="hx-l">' + items.map((g) => '<li class="' + (g.done ? 'on' : '') + '"><i aria-label="' + (g.done ? 'Đã xong' : 'Chưa xong') + '">' + (g.done ? ICON.check : '') + '</i><span>' + esc(g.text) + '</span></li>').join('') + '</ul></section>';
+    });
+    return h + '<p class="muted small" style="margin:12px 4px 0;text-align:center">App giữ mục tiêu 60 ngày gần nhất</p>';
   };
 
   // Bảng chọn nhiều nhiệm vụ từ Kho để thêm vào ngày đang chọn
@@ -761,16 +780,79 @@
   };
 
   /* ---------- Thống kê ---------- */
+  // Khoảng ngày đang xem ở Thống kê: 7, 30 ngày gần nhất hoặc khoảng tự chọn
+  const STATS_MAX_DAYS = 90;
+  function statsWindow() {
+    const t = todayKey();
+    if (ui.statsRange === 'custom' && ui.statsFrom && ui.statsTo) return { custom: true, from: ui.statsFrom, end: ui.statsTo, n: M.daysBetween(ui.statsFrom, ui.statsTo) + 1 };
+    const n = ui.statsRange === 30 ? 30 : 7;
+    return { custom: false, from: M.addDays(t, -(n - 1)), end: t, n: n };
+  }
+  // Nhãn trục ngày: 7 ngày ghi thứ; dài hơn thì cách đều, luôn có ngày cuối
+  function labelAt(i, n) {
+    if (n <= 7) return true;
+    const k = n <= 14 ? 2 : n <= 31 ? 5 : Math.ceil(n / 6);
+    return i % k === (n - 1) % k;
+  }
+  function barW(slot) { return Math.min(26, Math.max(Math.min(4, slot * 0.8), slot * 0.62)); }
+  function rangeDay(d) { return d.slice(0, 4) === todayKey().slice(0, 4) ? fmtShort(d) : fmtDate(d); }
+
+  async function openStatsRange() {
+    const t = todayKey();
+    let from = ui.statsFrom || M.addDays(t, -13), to = ui.statsTo || t;
+    const first = t.slice(0, 8) + '01';
+    const prevEnd = M.addDays(first, -1);
+    const presets = [['14 ngày qua', M.addDays(t, -13), t], ['Tháng này', first, t], ['Tháng trước', prevEnd.slice(0, 8) + '01', prevEnd]];
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    const yes = await confirmBox({
+      title: 'Chọn khoảng ngày',
+      html: '<div class="dr-q">' + presets.map((p) => '<button type="button" class="btn sm" data-dr="' + p[1] + '|' + p[2] + '">' + p[0] + '</button>').join('') + '</div>' +
+        '<label class="dr-f"><span>Từ ngày</span><input type="date" class="inp" id="drFrom" max="' + t + '" value="' + from + '"></label>' +
+        '<label class="dr-f"><span>Đến ngày</span><input type="date" class="inp" id="drTo" max="' + t + '" value="' + to + '"></label>' +
+        '<p class="dr-msg" id="drMsg" aria-live="polite"></p>',
+      okLabel: 'Xem',
+      onMount: (wrap) => {
+        const fi = $('#drFrom', wrap), ti = $('#drTo', wrap), msg = $('#drMsg', wrap), btn = $('[data-m=yes]', wrap);
+        const upd = () => {
+          from = fi.value; to = ti.value;
+          let err = '';
+          if (!re.test(from) || !re.test(to)) err = 'Chọn đủ 2 ngày';
+          else if (to > t) err = 'Chưa tới ngày ' + rangeDay(to);
+          else if (from > to) err = 'Ngày bắt đầu phải trước ngày kết thúc';
+          else if (M.daysBetween(from, to) + 1 > STATS_MAX_DAYS) err = 'Tối đa ' + STATS_MAX_DAYS + ' ngày';
+          msg.textContent = err;
+          msg.classList.toggle('bad', !!err);
+          btn.disabled = !!err;
+          btn.textContent = err ? 'Xem' : 'Xem ' + (M.daysBetween(from, to) + 1) + ' ngày';
+        };
+        wrap.addEventListener('input', upd);
+        wrap.addEventListener('change', upd);
+        wrap.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-dr]');
+          if (!b) return;
+          const p = b.dataset.dr.split('|');
+          fi.value = p[0]; ti.value = p[1]; upd();
+        });
+        upd();
+      },
+    });
+    if (!yes) return;
+    ui.statsRange = 'custom'; ui.statsFrom = from; ui.statsTo = to;
+    render();
+  }
+
   VIEWS.stats = function () {
-    const n = ui.statsRange;
-    const data = M.statsRange(state, todayKey(), n);
+    const w = statsWindow();
+    const n = w.n;
+    const data = M.statsRange(state, w.end, n);
     const sum = { home: 0, class: 0, work: 0, gym: 0, earned: 0, spent: 0, total: 0 };
     data.forEach((d) => Object.keys(sum).forEach((k) => { sum[k] += d[k] || 0; }));
     const all = M.statsAllTime(state);
     const active = data.filter((d) => d.total > 0).length;
     return topSub('Thống kê', goBtn('log', ICON.log, 'Nhật ký')) +
-      '<div class="seg" role="tablist"><button type="button" role="tab" aria-selected="' + (n === 7) + '" class="' + (n === 7 ? 'on' : '') + '" data-act="stats-range" data-n="7">7 ngày</button>' +
-      '<button type="button" role="tab" aria-selected="' + (n === 30) + '" class="' + (n === 30 ? 'on' : '') + '" data-act="stats-range" data-n="30">30 ngày</button></div>' +
+      '<div class="seg three" role="tablist">' + [7, 30].map((k) => { const on = !w.custom && n === k; return '<button type="button" role="tab" aria-selected="' + on + '" class="' + (on ? 'on' : '') + '" data-act="stats-range" data-n="' + k + '">' + k + ' ngày</button>'; }).join('') +
+      '<button type="button" role="tab" aria-selected="' + w.custom + '" class="' + (w.custom ? 'on' : '') + '" data-act="stats-custom">Tùy chọn</button></div>' +
+      (w.custom ? '<button type="button" class="dr-now" data-act="stats-custom" aria-label="Đổi khoảng ngày">' + ICON.cal + '<span>' + rangeDay(w.from) + ' → ' + rangeDay(w.end) + ' <em>· ' + n + ' ngày</em></span><em>Đổi</em></button>' : '') +
       '<section class="card"><div class="sec" style="margin:0 0 4px"><h2>Phút theo ngày</h2><span>' + fmt(sum.total) + '\'</span></div>' + chartSVG(data) +
       '<div class="legend">' + M.CATS.map((c) => '<span><i style="background:' + CAT_COLOR[c] + '"></i>' + M.CAT_SHORT[c] + ' <b>' + fmt(sum[c]) + '</b></span>').join('') + '</div></section>' +
       '<section class="card"><div class="tiles">' +
@@ -779,12 +861,12 @@
       '<div class="tile"><span>Ngày có ghi</span><b>' + active + '/' + n + '</b></div>' +
       '<div class="tile"><span>TB mỗi ngày</span><b>' + fmt(Math.round(sum.total / n)) + '\'</b></div>' +
       '</div><p class="muted small" style="margin-top:10px">Từ trước tới nay: kiếm ' + fmt(all.earned) + ', tiêu ' + fmt(all.spent) + ' Muffin</p></section>' +
-      funStatsHTML(n);
+      funStatsHTML(n, w.end);
   };
 
   // Thống kê giải trí theo mục (TikTok, YouTube...) trong n ngày
-  function funStatsHTML(n) {
-    const fs = M.funStatsRange(state, todayKey(), n);
+  function funStatsHTML(n, end) {
+    const fs = M.funStatsRange(state, end, n);
     let h = '<div class="sec"><h2>Giải trí</h2><span>' + fmt(fs.fun) + '\'</span></div>';
     if (!fs.fun) return h + '<section class="card"><p class="empty" style="padding:8px 4px">Chưa tiêu phút giải trí nào trong ' + n + ' ngày này</p></section>';
     h += '<section class="card"><h3>Phút giải trí theo ngày</h3>' + funChartSVG(fs) +
@@ -817,7 +899,7 @@
         '<text x="' + (L - 5) + '" y="' + (y(v) + 3.5).toFixed(1) + '" text-anchor="end">' + v + '</text>';
     }
     const slot = pw / data.length;
-    const bw = Math.max(4, Math.min(26, slot * 0.62));
+    const bw = barW(slot);
     data.forEach((d, i) => {
       const x = L + slot * i + (slot - bw) / 2;
       let acc = 0, bars = '';
@@ -830,7 +912,7 @@
       });
       const title = fmtDate(d.date) + ': ' + d.total + ' phút giải trí' + (d.total ? ' (' + order.filter((a) => d.use[a]).map((a) => FUN_APP_NAME[a] + ' ' + d.use[a]).join(', ') + ')' : '');
       g += '<g><title>' + esc(title) + '</title><rect x="' + (L + slot * i).toFixed(1) + '" y="' + T + '" width="' + slot.toFixed(1) + '" height="' + ph + '" fill="transparent"/>' + bars + '</g>';
-      const showLabel = data.length <= 7 || i % 5 === (data.length - 1) % 5;
+      const showLabel = labelAt(i, data.length);
       if (showLabel) g += '<text x="' + (L + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + (data.length <= 7 ? weekday(d.date) : fmtShort(d.date)) + '</text>';
     });
     return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Biểu đồ cột phút giải trí theo ngày, chia theo mục">' + g + '</svg>';
@@ -849,7 +931,7 @@
         '<text x="' + (L - 5) + '" y="' + (y(v) + 3.5).toFixed(1) + '" text-anchor="end">' + v + '</text>';
     }
     const slot = pw / data.length;
-    const bw = Math.max(4, Math.min(26, slot * 0.62));
+    const bw = barW(slot);
     const minLine = M.computeDayStreak(state, todayKey()).min;
     data.forEach((d, i) => {
       const x = L + slot * i + (slot - bw) / 2;
@@ -863,7 +945,7 @@
       });
       const title = fmtDate(d.date) + ': ' + d.total + ' phút (' + M.CATS.map((c) => M.CAT_SHORT[c] + ' ' + d[c]).join(', ') + ')';
       g += '<g><title>' + esc(title) + '</title><rect x="' + (L + slot * i).toFixed(1) + '" y="' + T + '" width="' + slot.toFixed(1) + '" height="' + ph + '" fill="transparent"/>' + bars + '</g>';
-      const showLabel = data.length <= 7 || i % 5 === (data.length - 1) % 5;
+      const showLabel = labelAt(i, data.length);
       if (showLabel) g += '<text x="' + (L + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 9) + '" text-anchor="middle">' + (data.length <= 7 ? weekday(d.date) : fmtShort(d.date)) + '</text>';
     });
     if (minLine <= top) g += '<line class="ml" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + y(minLine).toFixed(1) + '" y2="' + y(minLine).toFixed(1) + '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
@@ -924,7 +1006,7 @@
       '<li>Mỗi mốc nhận được 1 lần trong một lượt chuỗi (với Chuỗi ngày là 1 lần mỗi chu kì). Chuỗi đứt rồi đạt lại thì được nhận lại.</li>' +
       '<li>Thưởng phút → Quỹ giải trí. Thưởng là món → Túi đồ. Muffin từ hộp → Muffin thường.</li></ul></section>' +
       '<section class="card"><h3>8. Mục tiêu, nhật ký, sao lưu</h3><ul>' +
-      '<li><b>Mục tiêu</b>: mỗi ngày thêm bao nhiêu mục cũng được. Chọn ngày ở dải ngày để sửa mục tiêu của hôm nay và ' + (R.GOAL_PLAN_DAYS - 1) + ' ngày tới. Chỉ tick được mục tiêu của hôm nay.</li>' +
+      '<li><b>Mục tiêu</b>: mỗi ngày thêm bao nhiêu mục cũng được. Chọn ngày ở dải ngày để sửa mục tiêu của hôm nay và ' + (R.GOAL_PLAN_DAYS - 1) + ' ngày tới. Chỉ tick được mục tiêu của hôm nay. Nút đồng hồ ở góc trên để xem lại mục tiêu 60 ngày gần nhất.</li>' +
       '<li><b>Thưởng mục tiêu</b>: hoàn thành đủ <b>' + R.GOAL_BONUS_COUNT + ' mục tiêu</b> trong ngày → tự cộng <b>+' + R.GOAL_BONUS_MUFFIN + ' Muffin thường</b> (mỗi ngày 1 lần). Bỏ tick xuống dưới ' + R.GOAL_BONUS_COUNT + ' thì bị trừ lại.</li>' +
       '<li><b>Kho nhiệm vụ</b>: điền sẵn nhiều nhiệm vụ (mỗi dòng 1 cái), rồi chạm để lấy ra làm mục tiêu cho ngày đang chọn.</li>' +
       '<li>Mọi hành động đều vào Nhật ký; có Hoàn tác và xóa từng bản ghi (tự cộng/trừ lại điểm).</li>' +
@@ -1086,6 +1168,7 @@
       }
       case 'dismiss-welcome': state.meta.welcomeDismissed = true; save(); render(); break;
       case 'stats-range': ui.statsRange = parseInt(el.dataset.n, 10); render(); break;
+      case 'stats-custom': openStatsRange(); break;
       case 'undo': {
         const last = state.log[state.log.length - 1];
         if (last) undoEntry(last.id);
