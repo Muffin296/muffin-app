@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.4.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -338,7 +338,7 @@
 
   function renderTabs() {
     const ready = readyCounts();
-    const badges = { streak: ready.day + ready.habit, bag: M.boxInfo(state).available };
+    const badges = { streak: ready.day + ready.habit, bag: M.boxInfo(state, todayKey()).available };
     $('#tabs').innerHTML = MAIN_TABS.map((v) => {
       const on = rootTab === v;
       const b = badges[v] || 0;
@@ -394,9 +394,9 @@
       check: (v) => {
         if (v > R.MAX_MINUTES_PER_ENTRY) return { err: 'Mỗi lần ghi tối đa ' + R.MAX_MINUTES_PER_ENTRY + ' phút' };
         const g = Math.floor((before + v) / rate) - Math.floor(before / rate);
-        let box = 0;
-        if (cat === 'home') { const per = R.BOX.HOME_MINUTES_PER_BOX; box = Math.floor((state.boxAcc + v) / per) - Math.floor(state.boxAcc / per); }
-        return { html: ICON.muffin + '+' + g + ' Muffin' + (box ? ' · +' + box + ' lượt hộp' : '') };
+        let box = false;
+        if (cat === 'home') { const bi = M.boxInfo(state, t); box = !bi.opened && bi.home < bi.per && bi.home + v >= bi.per; }
+        return { html: ICON.muffin + '+' + g + ' Muffin' + (box ? ' · mở được hộp' : '') };
       },
       okLabel: (v) => v ? 'Ghi ' + fmt(v) + ' phút' : 'Ghi',
     });
@@ -407,7 +407,7 @@
     if (!res.ok) return toast(res.error, 'error');
     const e = res.entry;
     ui.bump = e.gained > 0;
-    commit(res, M.CAT_SHORT[cat] + ' +' + minutes + '\' → +' + e.gained + ' Muffin' + (e.boxGained ? ' · +' + e.boxGained + ' lượt hộp' : ''));
+    commit(res, M.CAT_SHORT[cat] + ' +' + minutes + '\' → +' + e.gained + ' Muffin' + (e.boxGained ? ' · mở được hộp' : ''));
   }
 
   /* ---------- Mục tiêu ---------- */
@@ -643,12 +643,12 @@
 
   /* ---------- Túi đồ (có Mở hộp) ---------- */
   VIEWS.bag = function () {
-    const bi = M.boxInfo(state);
+    const bi = M.boxInfo(state, todayKey());
     let h = topMain('Túi đồ');
     h += '<section class="fund"><div class="flb">Quỹ giải trí</div><div class="fv num">' + fmt(state.fun) + '<small> phút</small></div>' +
       '<button type="button" class="btn hl block" data-act="spend-open"' + (state.fun > 0 ? '' : ' disabled') + '>Tiêu phút</button></section>';
     h += '<section class="card boxc" style="margin-top:12px"><span class="bic">' + ICON.gift + '</span><div class="bt"><b>Hộp Huyền Thoại</b>' +
-      '<span>' + (bi.available ? bi.available + ' lượt · ' : '') + bi.progress + '/' + bi.per + '\' ở nhà</span>' + bar(bi.progress, bi.per, null, 'Tiến độ hộp tiếp theo') + '</div>' +
+      '<span>' + (bi.opened ? 'Hôm nay đã mở' : bi.ready ? 'Sẵn sàng mở!' : 'Hôm nay ' + fmt(bi.progress) + '/' + bi.per + '\' ở nhà') + '</span>' + bar(bi.progress, bi.per, null, 'Phút học ở nhà hôm nay cho Hộp Huyền Thoại') + '</div>' +
       '<button type="button" class="btn sm bx" data-act="open-box"' + (bi.available ? '' : ' disabled') + '>Mở</button></section>';
     const owned = R.SHOP.filter((it) => (state.inventory[it.id] || 0) > 0);
     const total = owned.reduce((s, it) => s + state.inventory[it.id], 0);
@@ -820,7 +820,8 @@
       '<li>Phút giải trí vào <b>Quỹ giải trí</b>; tiêu bằng nút “Tiêu phút” ở Túi đồ.</li>' +
       '<li><b>Mỗi ngày phải gửi ít nhất ' + R.DAILY_KHO_MIN + ' Muffin vào Kho</b>. Chưa gửi đủ thì chưa đổi được phút giải trí (vẫn mua đồ bình thường).</li>' +
       '<li><b>Mỗi ngày đổi tối đa ' + R.FUN_CONVERT_MAX_MINUTES_PER_DAY + ' phút giải trí</b> (2 tiếng, tức ' + Math.floor(R.FUN_CONVERT_MAX_MINUTES_PER_DAY / R.FUN_MINUTES_PER_MUFFIN) + ' Muffin). Phút thưởng từ chuỗi không tính vào giới hạn này.</li></ul></section>' +
-      '<section class="card"><h3>3. Hộp Huyền Thoại</h3><ul><li>Mỗi ' + R.BOX.HOME_MINUTES_PER_BOX + ' phút <b>học ở nhà</b> (cộng dồn) = 1 lượt mở (ở tab Túi đồ).</li>' +
+      '<section class="card"><h3>3. Hộp Huyền Thoại</h3><ul><li>Trong 1 ngày <b>học ở nhà đủ ' + R.BOX.HOME_MINUTES_PER_DAY + ' phút</b> thì được mở hộp 1 lần (ở tab Túi đồ).</li>' +
+      '<li><b>Mỗi ngày chỉ mở 1 lần</b>, học nhiều hơn cũng không thêm lượt. Qua 0:00 đếm lại từ 0; không mở trong ngày thì mất lượt hôm đó.</li>' +
       '<li>Mỗi lượt: ngẫu nhiên ' + R.BOX.REWARDS.map((r) => r.muffin).join(', ') + ' Muffin thường, cơ hội ngang nhau.</li></ul></section>' +
       '<section class="card"><h3>4. Cửa hàng</h3>' + tbl(R.SHOP.map((it) => [esc(it.name), fmt(it.price) + ' Muffin'])) + '</section>' +
       '<section class="card"><h3>5. Chuỗi ngày</h3><ul>' +
@@ -870,7 +871,6 @@
   /* ---------- Số dư ban đầu ---------- */
   VIEWS.setup = function () {
     const t = todayKey();
-    const bi = M.boxInfo(state);
     const st = M.computeDayStreak(state, t);
     const maxClaim = (list, streak, claims) => {
       let m = 0;
@@ -885,9 +885,6 @@
       '<form data-form="setup">' +
       '<section class="card"><h3>Muffin</h3>' +
       f('muffin', 'Muffin Thường', state.muffin) + f('kho', 'Muffin Trong Kho', state.kho) + f('fun', 'Quỹ giải trí', state.fun, 'phút') + '</section>' +
-      '<section class="card"><h3>Hộp Huyền Thoại</h3>' +
-      f('boxProgress', 'Tiến độ hộp hiện tại', bi.progress, 'phút ở nhà, 0-' + (R.BOX.HOME_MINUTES_PER_BOX - 1)) +
-      f('boxPending', 'Lượt mở hộp đang chờ', bi.available) + '</section>' +
       '<section class="card"><h3>Phút lẻ đang tích</h3>' +
       M.CATS.map((c) => f('rem_' + c, M.CAT_LABEL[c], state.acc[c] % R.MINUTES_PER_MUFFIN[c], '0-' + (R.MINUTES_PER_MUFFIN[c] - 1) + ' phút')).join('') + '</section>' +
       '<section class="card"><h3>Chuỗi ngày</h3>' +
@@ -1083,7 +1080,7 @@
     });
     if (bad) { readInt(bad, { allowZero: true }); bad.scrollIntoView({ block: 'center' }); return; }
     const input = {
-      muffin: data.muffin, kho: data.kho, fun: data.fun, cycles: data.cycles, boxProgress: data.boxProgress, boxPending: data.boxPending,
+      muffin: data.muffin, kho: data.kho, fun: data.fun, cycles: data.cycles,
       rem: {}, dayStreak: data.dayStreak, dayIncludesToday: data.dayIncludesToday, dayClaimedUpTo: data.dayClaimedUpTo, inventory: {}, habits: {},
     };
     M.CATS.forEach((c) => { input.rem[c] = data['rem_' + c]; });

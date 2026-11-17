@@ -32,10 +32,11 @@
     // Muffin trong Kho KHÔNG được đổi ra phút giải trí.
     FUN_MINUTES_PER_MUFFIN: 5,
 
-    // Hộp Huyền Thoại: mỗi 365 phút học ở nhà (cộng dồn) = 1 lượt mở.
+    // Hộp Huyền Thoại: trong 1 ngày học ở nhà đủ 200 phút thì mở được 1 lần (mỗi ngày tối đa 1 lần).
+    // Tính riêng từng ngày: qua ngày mới đếm lại từ 0, không mở trong ngày thì mất lượt.
     // Mỗi lượt thưởng ngẫu nhiên 2, 4 hoặc 7 Muffin thường, xác suất đều nhau (weight bằng nhau).
     BOX: {
-      HOME_MINUTES_PER_BOX: 365,
+      HOME_MINUTES_PER_DAY: 200,
       REWARDS: [
         { muffin: 2, weight: 1 },
         { muffin: 4, weight: 1 },
@@ -215,8 +216,8 @@
       fun: 0,          // Quỹ Thời Gian Giải Trí (phút)
       // Phút cộng dồn của từng loại, dùng để quy đổi. Phút lẻ = acc % tỷ lệ (giữ lại, không mất).
       acc: { home: 0, class: 0, work: 0, gym: 0 },
-      boxAcc: 0,       // Tổng phút học ở nhà tính cho Hộp Huyền Thoại (365 phút = 1 lượt)
-      boxOpened: 0,    // Số lượt hộp đã mở
+      boxAcc: 0,       // (cũ, không còn dùng) phút ở nhà cộng dồn của luật hộp trước v1.4
+      boxOpened: 0,    // Tổng số lần đã mở hộp (để thống kê). Ngày đã mở hộp: days[ngày].box = 1
       inventory: emptyInventory(),
       days: {},        // { 'YYYY-MM-DD': { home, class, work, gym, earned, spent, deposited, conv } }
       // anchor: { count, endDate } từ số dư ban đầu; cycleBase: số Chu Kì khai từ bản cũ
@@ -306,14 +307,13 @@
     const gained = Math.floor((before + minutes) / rate) - Math.floor(before / rate);
     s.acc[cat] = before + minutes;
     s.muffin += gained;
-    let boxGained = 0;
-    if (cat === 'home') {
-      const per = RULES.BOX.HOME_MINUTES_PER_BOX;
-      boxGained = Math.floor((s.boxAcc + minutes) / per) - Math.floor(s.boxAcc / per);
-      s.boxAcc += minutes;
-    }
     const entry = baseEntry('log', ctx);
     const day = ensureDay(s, entry.date);
+    let boxGained = 0;
+    if (cat === 'home') {
+      const per = RULES.BOX.HOME_MINUTES_PER_DAY;
+      if (!day.box && day.home < per && day.home + minutes >= per) boxGained = 1;
+    }
     day[cat] += minutes;
     day.earned += gained;
     entry.cat = cat; entry.minutes = minutes; entry.gained = gained; entry.boxGained = boxGained;
@@ -417,10 +417,14 @@
   }
 
   /* ---------- Hộp Huyền Thoại ---------- */
-  function boxInfo(state) {
-    const per = RULES.BOX.HOME_MINUTES_PER_BOX;
-    const cycles = Math.floor(state.boxAcc / per); // tổng số lượt hộp đã tích (không phải Chu Kì)
-    return { cycles: cycles, available: Math.max(0, cycles - state.boxOpened), progress: state.boxAcc % per, per: per };
+  // Hộp tính theo từng ngày: đủ HOME_MINUTES_PER_DAY phút ở nhà trong ngày `today` và chưa mở hôm đó.
+  function boxInfo(state, today) {
+    const per = RULES.BOX.HOME_MINUTES_PER_DAY;
+    const day = state.days[today || dateKey(Date.now())] || {};
+    const home = day.home || 0;
+    const opened = !!day.box;
+    const ready = home >= per && !opened;
+    return { per: per, home: home, progress: Math.min(home, per), opened: opened, ready: ready, available: ready ? 1 : 0, left: Math.max(0, per - home) };
   }
 
   // Chọn phần thưởng theo weight với số ngẫu nhiên r ∈ [0,1)
@@ -436,12 +440,16 @@
   }
 
   function openBox(state, ctx) {
-    if (boxInfo(state).available <= 0) return fail('Chưa có lượt mở hộp. Cần đủ ' + RULES.BOX.HOME_MINUTES_PER_BOX + ' phút học ở nhà.');
+    const today = dateKey(ctx.now);
+    const bi = boxInfo(state, today);
+    if (bi.opened) return fail('Hôm nay đã mở hộp rồi. Mai quay lại nhé.');
+    if (!bi.ready) return fail('Học ở nhà đủ ' + bi.per + ' phút hôm nay mới mở được hộp (còn ' + bi.left + ' phút).');
     const s = clone(state);
     const reward = pickBoxReward(ctx.rand != null ? ctx.rand : Math.random());
     s.boxOpened += 1; s.muffin += reward;
     const entry = baseEntry('box', ctx); entry.reward = reward;
-    ensureDay(s, entry.date).earned += reward;
+    const day = ensureDay(s, entry.date);
+    day.earned += reward; day.box = 1;
     pushLog(s, entry);
     return ok(s, entry);
   }
@@ -787,14 +795,10 @@
         const newAcc = Math.max(0, acc - e.minutes);
         const loss = Math.floor(acc / rate) - Math.floor(newAcc / rate);
         if (s.muffin < loss) return 'Cần trừ lại ' + loss + ' Muffin thường nhưng chỉ còn ' + s.muffin + ' (đã tiêu hoặc gửi Kho).';
-        if (e.cat === 'home') {
-          const newBox = Math.max(0, s.boxAcc - e.minutes);
-          if (Math.floor(newBox / RULES.BOX.HOME_MINUTES_PER_BOX) < s.boxOpened) return 'Số phút này đã dùng để mở Hộp Huyền Thoại. Hãy hoàn tác lần mở hộp trước.';
-          s.boxAcc = newBox;
-        }
+        const day = ensureDay(s, e.date);
+        if (e.cat === 'home' && day.box && (day.home || 0) - e.minutes < RULES.BOX.HOME_MINUTES_PER_DAY) return 'Số phút này đã dùng để mở Hộp Huyền Thoại. Hãy hoàn tác lần mở hộp trước.';
         s.acc[e.cat] = newAcc;
         s.muffin -= loss;
-        const day = ensureDay(s, e.date);
         clampDown(day, e.cat, e.minutes);
         clampDown(day, 'earned', loss);
         return null;
@@ -827,6 +831,7 @@
         if (s.muffin < e.reward) return 'Cần trừ lại ' + e.reward + ' Muffin thường nhưng chỉ còn ' + s.muffin + '.';
         s.muffin -= e.reward; s.boxOpened = Math.max(0, s.boxOpened - 1);
         clampDown(ensureDay(s, e.date), 'earned', e.reward);
+        ensureDay(s, e.date).box = 0;
         return null;
       case 'goalBonus': {
         if (s.muffin < e.amount) return 'Cần trừ lại ' + e.amount + ' Muffin thường nhưng chỉ còn ' + s.muffin + '.';
@@ -882,7 +887,7 @@
   }
   function describeEntry(e) {
     switch (e.type) {
-      case 'log': return 'Ghi ' + e.minutes + ' phút ' + CAT_LABEL[e.cat] + ' → +' + e.gained + ' 🧁' + (e.boxGained ? ' · +' + e.boxGained + ' lượt hộp' : '');
+      case 'log': return 'Ghi ' + e.minutes + ' phút ' + CAT_LABEL[e.cat] + ' → +' + e.gained + ' 🧁' + (e.boxGained ? ' · mở được hộp' : '');
       case 'deposit': return 'Gửi ' + e.amount + ' Muffin vào Kho';
       case 'convert': return 'Đổi ' + e.amount + ' Muffin → ' + e.minutes + ' phút giải trí';
       case 'buy': return 'Đổi "' + ITEM[e.item].name + '" (Kho -' + e.fromKho + ', Thường -' + e.fromMuffin + ')';
@@ -898,18 +903,16 @@
 
   /* ================================================================
    * Số dư ban đầu (chuyển từ bản cũ)
-   * input: { muffin, kho, fun, cycles (Chu Kì = số lần đi hết 75 ngày), boxProgress, boxPending, rem:{home,class,work,gym},
+   * input: { muffin, kho, fun, cycles (Chu Kì = số lần đi hết 75 ngày), rem:{home,class,work,gym},
    *          dayStreak, dayIncludesToday, dayClaimedUpTo, inventory:{id:n},
    *          habits: { [id]: { streak, includesToday, claimedUpTo } } }
    * Ghi đè số dư, xóa nhật ký hoàn tác (vì số dư đã thay mới).
    * ================================================================ */
   function applySetup(state, input, today) {
     const n = (v) => (v === undefined || v === null || v === '' ? 0 : v);
-    const fields = ['muffin', 'kho', 'fun', 'cycles', 'boxProgress', 'boxPending', 'dayStreak', 'dayClaimedUpTo'];
+    const fields = ['muffin', 'kho', 'fun', 'cycles', 'dayStreak', 'dayClaimedUpTo'];
     for (const f of fields) if (!isNonNegInt(n(input[f]))) return fail('Ô "' + f + '" phải là số nguyên ≥ 0.');
-    const per = RULES.BOX.HOME_MINUTES_PER_BOX;
     const N = RULES.DAY_STREAK_CYCLE_DAYS;
-    if (n(input.boxProgress) >= per) return fail('Tiến độ hộp phải nhỏ hơn ' + per + ' phút.');
     if (n(input.dayStreak) > N) return fail('Ngày trong chu kì chỉ từ 0 đến ' + N + '.');
     const s = clone(state);
     s.muffin = n(input.muffin); s.kho = n(input.kho); s.fun = n(input.fun);
@@ -919,9 +922,6 @@
       if (!isNonNegInt(r) || r >= RULES.MINUTES_PER_MUFFIN[c]) return fail('Phút lẻ "' + CAT_LABEL[c] + '" phải từ 0 đến ' + (RULES.MINUTES_PER_MUFFIN[c] - 1) + '.');
       s.acc[c] = r;
     }
-    // Hộp: lượt đang chờ + tiến độ phút ở nhà
-    s.boxAcc = n(input.boxPending) * per + n(input.boxProgress);
-    s.boxOpened = 0;
     const inv = input.inventory || {};
     for (const it of RULES.SHOP) {
       const v = n(inv[it.id]);
