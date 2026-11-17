@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.11.1';
+  const APP_VERSION = '1.12.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -273,7 +273,7 @@
       wrap.innerHTML = '<div class="sheet' + (pk ? ' has-pick' : '') + '" role="dialog" aria-modal="true" aria-label="' + esc(o.title) + '" style="' + tone(o.tone || 'ok') + '"><div class="grab"></div>' +
         '<div class="np-hd"><div class="np-ic">' + o.icon + '</div><div class="np-tt"><b>' + esc(o.title) + '</b>' + (o.sub ? '<span>' + esc(o.sub) + '</span>' : '') + '</div>' +
         '<button type="button" class="np-x" data-np="x" aria-label="Đóng">' + ICON.x + '</button></div>' +
-        (pk ? '<div class="apps-lb" id="npPl">' + esc(pk.label) + '</div><div class="apps" role="radiogroup" aria-labelledby="npPl">' + pk.items.map((it) =>
+        (pk ? '<div class="apps-lb" id="npPl">' + esc(pk.label) + '</div><div class="apps' + (pk.cols === 2 ? ' c2' : '') + '" role="radiogroup" aria-labelledby="npPl">' + pk.items.map((it) =>
           '<button type="button" class="pk" role="radio" data-pick="' + esc(it.id) + '" style="--a:' + it.color + '"' + (it.locked ? ' disabled aria-label="' + esc(it.name) + ', hết giới hạn hôm nay"' : '') + '>' + (it.locked ? ICON.lock : it.icon) + '<span>' + esc(it.name) + '</span></button>').join('') + '</div>' : '') +
         '<div class="np-disp"><div class="np-n num" id="npN"></div><div class="np-g" id="npG" aria-live="polite"></div></div>' +
         (o.quick && o.quick.length ? '<div class="np-qc">' + o.quick.map((q) => '<button type="button" data-q="' + q.v + '">' + esc(q.label || q.v) + '</button>').join('') + '</div>' : '') +
@@ -358,7 +358,7 @@
 
   function renderTabs() {
     const ready = readyCounts();
-    const badges = { streak: ready.day + ready.habit, bag: M.boxInfo(state, todayKey()).available };
+    const badges = { streak: ready.day + ready.habit, bag: M.boxInfo(state, M.boxDay(state, Date.now())).available };
     $('#tabs').innerHTML = MAIN_TABS.map((v) => {
       const on = rootTab === v;
       const b = badges[v] || 0;
@@ -407,27 +407,35 @@
     const t = todayKey();
     const rate = R.MINUTES_PER_MUFFIN[cat];
     const before = state.acc[cat];
+    // Từ 0h tới trước 4h sáng: hỏi tính phút cho hôm qua hay hôm nay
+    const y = M.lateYesterday(Date.now());
+    const mins = (d) => fmt((state.days[d] || {})[cat] || 0) + '\'';
+    const pick = y ? { label: 'Tính cho ngày nào?', cols: 2, value: null, items: [
+      { id: y, name: 'Hôm qua ' + fmtShort(y) + ' · ' + mins(y), icon: ICON.hist, color: 'var(--c)' },
+      { id: t, name: 'Hôm nay ' + fmtShort(t) + ' · ' + mins(t), icon: ICON.cal, color: 'var(--c)' }] } : null;
     const v = await numPad({
-      title: M.CAT_LABEL[cat], sub: 'Hôm nay ' + fmt((state.days[t] || {})[cat] || 0) + '\'', icon: ICON[cat], tone: cat, unit: 'phút',
+      title: M.CAT_LABEL[cat], sub: y ? 'Đã qua 0h' : 'Hôm nay ' + mins(t), icon: ICON[cat], tone: cat, unit: 'phút', pick: pick,
       quick: [15, 30, 45, 60, 90].map((m) => ({ v: m, label: m + '\'' })),
       hint: rate + ' phút = 1 Muffin',
       check: (v) => {
         if (v > R.MAX_MINUTES_PER_ENTRY) return { err: 'Mỗi lần ghi tối đa ' + R.MAX_MINUTES_PER_ENTRY + ' phút' };
         const g = Math.floor((before + v) / rate) - Math.floor(before / rate);
         let box = false;
-        if (cat === 'home') { const bi = M.boxInfo(state, t); box = !bi.opened && bi.home < bi.per && bi.home + v >= bi.per; }
+        if (cat === 'home') { const bi = M.boxInfo(state, (pick && pick.value) || t); box = !bi.opened && bi.home < bi.per && bi.home + v >= bi.per; }
         return { html: ICON.muffin + '+' + g + ' Muffin' + (box ? ' · mở được hộp' : '') };
       },
-      okLabel: (v) => v ? 'Ghi ' + fmt(v) + ' phút' : 'Ghi',
+      okLabel: (v) => pick && !pick.value ? 'Chọn ngày ở trên' : v ? 'Ghi ' + fmt(v) + ' phút' : 'Ghi',
     });
-    if (v) doLog(cat, v);
+    if (v) doLog(cat, v, pick ? pick.value : null);
   }
-  function doLog(cat, minutes) {
-    const res = M.logMinutes(state, cat, minutes, ctx());
+  function doLog(cat, minutes, date) {
+    const c = ctx();
+    if (date) c.date = date;
+    const res = M.logMinutes(state, cat, minutes, c);
     if (!res.ok) return toast(res.error, 'error');
     const e = res.entry;
     ui.bump = e.gained > 0;
-    commit(res, M.CAT_SHORT[cat] + ' +' + minutes + '\' → +' + e.gained + ' Muffin' + (e.boxGained ? ' · mở được hộp' : ''));
+    commit(res, M.CAT_SHORT[cat] + ' +' + minutes + '\' → +' + e.gained + ' Muffin' + (e.boxGained ? ' · mở được hộp' : '') + (e.late ? ' · tính cho hôm qua' : ''));
   }
 
   /* ---------- Mục tiêu ---------- */
@@ -683,7 +691,8 @@
 
   /* ---------- Túi đồ (có Mở hộp) ---------- */
   VIEWS.bag = function () {
-    const bi = M.boxInfo(state, todayKey());
+    const bd = M.boxDay(state, Date.now());
+    const bi = M.boxInfo(state, bd);
     const allLocked = M.funLimits(state, todayKey()).every((l) => l.locked);
     let h = topMain('Túi đồ');
     h += '<section class="fund"><div class="flb">Quỹ giải trí</div><div class="fv num">' + fmt(state.fun) + '<small> phút</small></div>' +
@@ -698,7 +707,7 @@
           '<span class="mn">' + fmt(x.minutes) + '<small>/' + x.limit + "'</small></span><span class=\"pc\">" + (x.locked ? 'Hết' : 'còn ' + x.left + "'") + '</span></div>').join('') + '</section>';
     }
     h += '<section class="card boxc" style="margin-top:12px"><span class="bic">' + ICON.gift + '</span><div class="bt"><b>Hộp Huyền Thoại</b>' +
-      '<span>' + (bi.opened ? 'Hôm nay đã mở' : bi.ready ? 'Sẵn sàng mở!' : 'Hôm nay ' + fmt(bi.progress) + '/' + bi.per + '\' ở nhà') + '</span>' + bar(bi.progress, bi.per, null, 'Phút học ở nhà hôm nay cho Hộp Huyền Thoại') + '</div>' +
+      '<span>' + (bi.opened ? 'Hôm nay đã mở' : bi.ready ? (bd === todayKey() ? 'Sẵn sàng mở!' : 'Hộp hôm qua sẵn sàng mở!') : 'Hôm nay ' + fmt(bi.progress) + '/' + bi.per + '\' ở nhà') + '</span>' + bar(bi.progress, bi.per, null, 'Phút học ở nhà hôm nay cho Hộp Huyền Thoại') + '</div>' +
       '<button type="button" class="btn sm gold" data-act="open-box"' + (bi.available ? '' : ' disabled') + '>Mở</button></section>';
     const owned = R.SHOP.filter((it) => (state.inventory[it.id] || 0) > 0);
     const total = owned.reduce((s, it) => s + state.inventory[it.id], 0);

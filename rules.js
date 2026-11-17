@@ -130,6 +130,7 @@
     STREAK_MIN_MINUTES: 60,
     // Ngày tính theo giờ Asia/Ho_Chi_Minh (UTC+7, không có giờ mùa hè).
     TZ_OFFSET_HOURS: 7,
+    LATE_LOG_HOURS: 4, // 0h tới trước 4h sáng được chọn ghi phút (và mở hộp) cho hôm qua
     // Mỗi lần ghi tối đa 600 phút.
     MAX_MINUTES_PER_ENTRY: 600,
     // Nhắc sao lưu nếu quá 7 ngày chưa xuất JSON.
@@ -185,6 +186,11 @@
   // Ngày (YYYY-MM-DD) theo giờ Việt Nam từ mốc thời gian (ms)
   function dateKey(ms) {
     return new Date(ms + RULES.TZ_OFFSET_HOURS * 3600000).toISOString().slice(0, 10);
+  }
+  // Trong khung 0h tới trước LATE_LOG_HOURS sáng: trả về ngày hôm qua (được ghi bù), ngoài khung: null
+  function lateYesterday(ms) {
+    const h = new Date(ms + RULES.TZ_OFFSET_HOURS * 3600000).getUTCHours();
+    return h < RULES.LATE_LOG_HOURS ? addDays(dateKey(ms), -1) : null;
   }
   // Cộng/trừ ngày trên chuỗi YYYY-MM-DD
   function addDays(key, n) {
@@ -333,6 +339,9 @@
     if (CATS.indexOf(cat) < 0) return fail('Loại không hợp lệ.');
     if (!Number.isInteger(minutes) || minutes <= 0) return fail('Số phút phải là số nguyên dương.');
     if (minutes > RULES.MAX_MINUTES_PER_ENTRY) return fail('Mỗi lần ghi tối đa ' + RULES.MAX_MINUTES_PER_ENTRY + ' phút.');
+    const today = dateKey(ctx.now);
+    const forDate = ctx.date || today;
+    if (forDate !== today && forDate !== lateYesterday(ctx.now)) return fail('Chỉ ghi cho hôm qua được từ 0h tới trước ' + RULES.LATE_LOG_HOURS + 'h sáng.');
     const s = clone(state);
     const rate = RULES.MINUTES_PER_MUFFIN[cat];
     const before = s.acc[cat];
@@ -340,6 +349,7 @@
     s.acc[cat] = before + minutes;
     s.muffin += gained;
     const entry = baseEntry('log', ctx);
+    if (forDate !== today) { entry.date = forDate; entry.late = 1; }
     const day = ensureDay(s, entry.date);
     let boxGained = 0;
     if (cat === 'home') {
@@ -500,8 +510,15 @@
     return list[list.length - 1].muffin;
   }
 
+  // Ngày của hộp đang xét: hôm nay, trừ khi trong khung 0h-4h hộp hôm qua đủ phút mà chưa mở (và hộp hôm nay chưa sẵn)
+  function boxDay(state, now) {
+    const t = dateKey(now), y = lateYesterday(now);
+    if (y && boxInfo(state, y).ready && !boxInfo(state, t).ready) return y;
+    return t;
+  }
+
   function openBox(state, ctx) {
-    const today = dateKey(ctx.now);
+    const today = boxDay(state, ctx.now);
     const bi = boxInfo(state, today);
     if (bi.opened) return fail('Hôm nay đã mở hộp rồi. Mai quay lại nhé.');
     if (!bi.ready) return fail('Học ở nhà đủ ' + bi.per + ' phút hôm nay mới mở được hộp (còn ' + bi.left + ' phút).');
@@ -509,6 +526,7 @@
     const reward = pickBoxReward(ctx.rand != null ? ctx.rand : Math.random());
     s.boxOpened += 1; s.muffin += reward;
     const entry = baseEntry('box', ctx); entry.reward = reward;
+    if (entry.date !== today) { entry.date = today; entry.late = 1; }
     const day = ensureDay(s, entry.date);
     day.earned += reward; day.box = 1;
     pushLog(s, entry);
@@ -1139,7 +1157,7 @@
 
   return {
     RULES, CATS, CAT_LABEL, CAT_SHORT, SHOP_GROUPS, ITEM, SCHEMA_VERSION,
-    dateKey, addDays, daysBetween, parsePositiveInt, dayTotal,
+    dateKey, addDays, daysBetween, parsePositiveInt, dayTotal, lateYesterday, boxDay,
     createInitialState, migrate,
     logMinutes, deposit, convertFun, purchasePreview, buyItem, useItem, spendFun, funUseInfo,
     boxInfo, pickBoxReward, openBox,
