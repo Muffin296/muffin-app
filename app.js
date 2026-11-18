@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.14.0';
+  const APP_VERSION = '1.14.1';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -675,7 +675,7 @@
       let week = '';
       for (let i = 6; i >= 0; i--) {
         const d = M.addDays(t, -i);
-        const editable = d === t || d === y;
+        const editable = i <= R.HABIT_TICK_BACK_DAYS;
         const isDone = !!done[d];
         week += '<button type="button" class="wd' + (isDone ? ' done' : '') + (d === t ? ' today' : '') + (editable ? ' editable' : '') + '"' +
           (editable ? ' data-act="habit-toggle" data-id="' + esc(hb.id) + '" data-day="' + d + '"' : ' disabled') +
@@ -1034,7 +1034,7 @@
       '<li><b>Chu kì</b>: mỗi lần chuỗi đi hết ' + R.DAY_STREAK_CYCLE_DAYS + ' ngày thì Chu kì +1, ngày thứ ' + (R.DAY_STREAK_CYCLE_DAYS + 1) + ' quay về ngày 1 của chu kì mới và mọi mốc thưởng nhận lại được từ đầu. Chu kì là tổng số lần đã đi hết ' + R.DAY_STREAK_CYCLE_DAYS + ' ngày, đứt chuỗi cũng không mất.</li></ul>' +
       tbl(R.DAY_STREAK_REWARDS.map((m) => [m.at + ' ngày', esc(M.rewardText(m.reward))])) + '</section>' +
       '<section class="card"><h3>6. Chuỗi thói quen</h3><ul><li>Mỗi thói quen có chuỗi riêng: tick hoàn thành trong ngày thì +1, bỏ lỡ 1 ngày thì về 0.</li>' +
-      '<li>Được tick bù cho hôm qua nếu quên.</li></ul>' +
+      '<li>Quên tick thì bấm vào ngày đó để tick bù, được ' + (R.HABIT_TICK_BACK_DAYS + 1) + ' ngày gần nhất.</li></ul>' +
       tbl(R.HABIT_STREAK_REWARDS.map((m) => [m.at + ' ngày', esc(M.rewardText(m.reward))])) + '</section>' +
       '<section class="card"><h3>6b. Thói quen số lần</h3><ul><li>Cộng dồn số ngày đã làm (mỗi ngày tính 1 lần), bỏ ngày không bị về 0.</li>' +
       '<li>Mỗi mốc chỉ nhận 1 lần. Sau mốc ' + R.HABIT_COUNT_REPEAT.after + ', cứ thêm ' + R.HABIT_COUNT_REPEAT.every + ' lần được ' + esc(M.rewardText(R.HABIT_COUNT_REPEAT.reward)) + '.</li></ul>' +

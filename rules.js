@@ -144,6 +144,8 @@
     ],
     // Sau mốc 50: cứ thêm 3 lần lại được 25 Muffin thường (53, 56, 59, ...)
     HABIT_COUNT_REPEAT: { after: 50, every: 3, reward: { muffin: 25 } },
+    // Tick bù thói quen: hôm nay và tối đa 6 ngày trước (đúng 7 ngày hiện trên thẻ)
+    HABIT_TICK_BACK_DAYS: 6,
 
     /* ---------- Các mặc định cho luật chưa rõ ở bản cũ (mục 3) ---------- */
     // Một ngày được tính vào Chuỗi Ngày khi tổng phút ghi nhận (mọi loại) >= ngưỡng này.
@@ -782,9 +784,10 @@
     if (s.habits.length === before) return fail('Không tìm thấy thói quen.');
     return ok(s);
   }
-  // Tick / bỏ tick một ngày (chỉ cho hôm nay và hôm qua)
+  // Tick / bỏ tick một ngày (hôm nay và HABIT_TICK_BACK_DAYS ngày trước)
   function toggleHabitDay(state, habitId, day, today) {
-    if (day !== today && day !== addDays(today, -1)) return fail('Chỉ tick được hôm nay hoặc hôm qua.');
+    const back = daysBetween(day, today);
+    if (!(back >= 0 && back <= RULES.HABIT_TICK_BACK_DAYS)) return fail('Chỉ tick được ' + (RULES.HABIT_TICK_BACK_DAYS + 1) + ' ngày gần nhất.');
     const s = clone(state);
     const h = s.habits.find((x) => x.id === habitId);
     if (!h) return fail('Không tìm thấy thói quen.');
