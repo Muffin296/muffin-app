@@ -125,15 +125,15 @@
     // Thói quen kiểu Số lần: cộng dồn số ngày đã làm (mỗi ngày tối đa 1 lần), bỏ ngày không về 0.
     // Mỗi mốc chỉ nhận 1 lần. Lựa chọn 'funN' = N phút giải trí.
     HABIT_COUNT_REWARDS: [
-      { at: 2,  reward: { fun: 20 } },
-      { at: 4,  reward: { fun: 20 } },
-      { at: 6,  reward: { fun: 20 } },
-      { at: 8,  reward: { fun: 20 } },
-      { at: 10, reward: { fun: 45 } },
-      { at: 12, reward: { fun: 45 } },
-      { at: 14, reward: { fun: 45 } },
-      { at: 16, reward: { fun: 45 } },
-      { at: 18, reward: { fun: 60 } },
+      { at: 2,  reward: { fun: 10 } },
+      { at: 4,  reward: { fun: 10 } },
+      { at: 6,  reward: { fun: 10 } },
+      { at: 8,  reward: { fun: 15 } },
+      { at: 10, reward: { fun: 15 } },
+      { at: 12, reward: { fun: 25 } },
+      { at: 14, reward: { fun: 25 } },
+      { at: 16, reward: { fun: 25 } },
+      { at: 18, reward: { fun: 40 } },
       { at: 20, reward: { choice: ['food', 'net', 'fun120'] } }, // Đồ ăn/uống <60k HOẶC Net 2 tiếng HOẶC 120 phút
       { at: 25, reward: { muffin: 25 } },
       { at: 30, reward: { item: 'buy100' } },
