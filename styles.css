@@ -374,6 +374,18 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .claim-box span { flex: 1; min-width: 140px; }
 .claim-box .btn { background: var(--fl); color: #1C1300; }
 .next { margin-top: 10px; font-size: 14px; color: var(--muted); font-weight: 600; }
+/* Thói quen: chọn kiểu + thẻ Số lần (tông tím, chấm không cần liền nhau) */
+.hk-lb { font-size: 13px; font-weight: 800; color: var(--muted); margin: 12px 2px 8px; }
+.seg.sm button { min-height: 38px; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.seg.sm svg { width: 16px; height: 16px; }
+.hk-note { font-size: 13px; color: var(--muted); font-weight: 600; margin: 8px 2px 0; }
+.habit .hh .ttl { flex: 1; min-width: 0; }
+.habit .hh .ttl b { display: block; }
+.habit .kind { font-size: 12px; font-weight: 800; color: var(--muted); margin-top: 2px; }
+.habit.cnt { --ok: var(--class); --ok-bg: var(--class-bg); }
+.habit .prog { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 2px 6px; }
+.habit .prog b { color: var(--ink); }
+.habit.cnt .bar { margin-bottom: 12px; }
 
 /* ---------------- Túi đồ ---------------- */
 .fund { background: var(--hero-bg); color: var(--hero-ink); border-radius: 26px; padding: 18px 20px; }

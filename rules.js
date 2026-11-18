@@ -122,6 +122,28 @@
       { at: 95,  reward: { fun: 25 } },
       { at: 100, reward: { item: 'buy1m' } },            // Mua đồ <1tr
     ],
+    // Thói quen kiểu Số lần: cộng dồn số ngày đã làm (mỗi ngày tối đa 1 lần), bỏ ngày không về 0.
+    // Mỗi mốc chỉ nhận 1 lần. Lựa chọn 'funN' = N phút giải trí.
+    HABIT_COUNT_REWARDS: [
+      { at: 2,  reward: { fun: 20 } },
+      { at: 4,  reward: { fun: 20 } },
+      { at: 6,  reward: { fun: 20 } },
+      { at: 8,  reward: { fun: 20 } },
+      { at: 10, reward: { fun: 45 } },
+      { at: 12, reward: { fun: 45 } },
+      { at: 14, reward: { fun: 45 } },
+      { at: 16, reward: { fun: 45 } },
+      { at: 18, reward: { fun: 60 } },
+      { at: 20, reward: { choice: ['food', 'net', 'fun120'] } }, // Đồ ăn/uống <60k HOẶC Net 2 tiếng HOẶC 120 phút
+      { at: 25, reward: { muffin: 25 } },
+      { at: 30, reward: { item: 'buy100' } },
+      { at: 35, reward: { item: 'buy100' } },
+      { at: 40, reward: { item: 'buy150' } },
+      { at: 45, reward: { muffin: 25 } },
+      { at: 50, reward: { item: 'buy250' } },
+    ],
+    // Sau mốc 50: cứ thêm 3 lần lại được 25 Muffin thường (53, 56, 59, ...)
+    HABIT_COUNT_REPEAT: { after: 50, every: 3, reward: { muffin: 25 } },
 
     /* ---------- Các mặc định cho luật chưa rõ ở bản cũ (mục 3) ---------- */
     // Một ngày được tính vào Chuỗi Ngày khi tổng phút ghi nhận (mọi loại) >= ngưỡng này.
@@ -637,6 +659,31 @@
 
   function claimKey(runStart, at) { return runStart + '|' + at; }
 
+  // Thói quen kiểu Số lần
+  function isCountHabit(h) { return !!h && h.kind === 'count'; }
+  function habitCount(h) { return (h.done || []).length; }
+  // Danh sách mốc Số lần: bảng cố định + các mốc lặp sau mốc cuối (tới mốc kế tiếp chưa đạt)
+  function countMilestoneList(count) {
+    const list = RULES.HABIT_COUNT_REWARDS.slice();
+    const rp = RULES.HABIT_COUNT_REPEAT;
+    for (let at = rp.after + rp.every; at <= Math.max(count, rp.after) + rp.every; at += rp.every) list.push({ at: at, reward: rp.reward });
+    return list;
+  }
+  function countKey(at) { return 'c|' + at; }
+  // Trạng thái 1 thói quen (2 kiểu): { kind, count, todayDone, ms: [{at, reward, status}] }
+  function habitMilestones(habit, today) {
+    if (isCountHabit(habit)) {
+      const n = habitCount(habit);
+      const claims = habit.claims || [];
+      return {
+        kind: 'count', count: n, todayDone: (habit.done || []).indexOf(today) >= 0,
+        ms: countMilestoneList(n).map((m) => ({ at: m.at, reward: m.reward, status: claims.indexOf(countKey(m.at)) >= 0 ? 'claimed' : (n >= m.at ? 'ready' : 'locked') })),
+      };
+    }
+    const st = computeHabitStreak(habit, today);
+    return { kind: 'streak', count: st.count, todayDone: st.todayDone, streak: st, ms: milestoneStatus(RULES.HABIT_STREAK_REWARDS, st, habit.claims) };
+  }
+
   // Trạng thái từng mốc: 'claimed' | 'ready' | 'locked'
   function milestoneStatus(list, streak, claims) {
     return list.map((m) => {
@@ -648,9 +695,12 @@
   // Trao phần thưởng: phút → Quỹ giải trí, món → Túi Đồ
   function grantReward(s, reward, choice) {
     if (reward.fun) { s.fun += reward.fun; return { fun: reward.fun }; }
+    if (reward.muffin) { s.muffin += reward.muffin; return { muffin: reward.muffin }; }
     let item = reward.item;
     if (reward.choice) {
       if (reward.choice.indexOf(choice) < 0) return null;
+      const fm = /^fun(\d+)$/.exec(choice);
+      if (fm) { const f = parseInt(fm[1], 10); s.fun += f; return { fun: f }; }
       item = choice;
     }
     s.inventory[item] = (s.inventory[item] || 0) + 1;
@@ -676,29 +726,44 @@
   function claimHabitMilestone(state, habitId, at, choice, today, ctx) {
     const hi = state.habits.findIndex((h) => h.id === habitId);
     if (hi < 0) return fail('Không tìm thấy thói quen.');
-    const m = RULES.HABIT_STREAK_REWARDS.find((x) => x.at === at);
-    if (!m) return fail('Không có mốc này.');
-    const st = computeHabitStreak(state.habits[hi], today);
-    if (st.count < at) return fail('Chưa đạt mốc ' + at + ' ngày (đang ' + st.count + ').');
-    const key = claimKey(st.runStart, at);
-    if (state.habits[hi].claims.indexOf(key) >= 0) return fail('Mốc này đã nhận trong lượt chuỗi hiện tại.');
+    const hb = state.habits[hi];
+    let m, key;
+    if (isCountHabit(hb)) {
+      const n = habitCount(hb);
+      m = countMilestoneList(n).find((x) => x.at === at);
+      if (!m) return fail('Không có mốc này.');
+      if (n < at) return fail('Chưa đạt mốc ' + at + ' lần (đang ' + n + ').');
+      key = countKey(at);
+      if (hb.claims.indexOf(key) >= 0) return fail('Mốc này đã nhận rồi.');
+    } else {
+      m = RULES.HABIT_STREAK_REWARDS.find((x) => x.at === at);
+      if (!m) return fail('Không có mốc này.');
+      const st = computeHabitStreak(hb, today);
+      if (st.count < at) return fail('Chưa đạt mốc ' + at + ' ngày (đang ' + st.count + ').');
+      key = claimKey(st.runStart, at);
+      if (hb.claims.indexOf(key) >= 0) return fail('Mốc này đã nhận trong lượt chuỗi hiện tại.');
+    }
     if (m.reward.choice && m.reward.choice.indexOf(choice) < 0) return fail('Hãy chọn 1 phần thưởng.');
     const s = clone(state);
     const got = grantReward(s, m.reward, choice);
     s.habits[hi].claims.push(key);
     const entry = baseEntry('claimHabit', ctx);
     entry.habitId = habitId; entry.habitName = s.habits[hi].name; entry.at = at; entry.key = key; entry.got = got;
+    if (isCountHabit(hb)) entry.kind = 'count';
+    if (got.muffin) ensureDay(s, entry.date).earned += got.muffin;
     pushLog(s, entry);
     return ok(s, entry);
   }
 
   /* ---------- Thói quen ---------- */
-  function addHabit(state, name, ctx) {
+  function addHabit(state, name, ctx, kind) {
     const n = String(name || '').trim();
     if (!n) return fail('Hãy nhập tên thói quen.');
     if (n.length > 60) return fail('Tên thói quen tối đa 60 ký tự.');
     const s = clone(state);
-    s.habits.push({ id: ctx.id || ('h' + ctx.now), name: n, createdAt: ctx.now, done: [], anchor: null, claims: [] });
+    const h = { id: ctx.id || ('h' + ctx.now), name: n, createdAt: ctx.now, done: [], anchor: null, claims: [] };
+    if (kind === 'count') h.kind = 'count';
+    s.habits.push(h);
     return ok(s);
   }
   function renameHabit(state, habitId, name) {
@@ -727,7 +792,7 @@
     if (i >= 0) h.done.splice(i, 1); else h.done.push(day);
     // giữ gọn: chỉ lưu 400 ngày gần nhất
     h.done.sort();
-    if (h.done.length > 400) h.done = h.done.slice(-400);
+    if (h.done.length > 400 && !isCountHabit(h)) h.done = h.done.slice(-400);
     return ok(s);
   }
 
@@ -982,6 +1047,10 @@
         if (e.got.fun) {
           if (s.fun < e.got.fun) return 'Quỹ giải trí chỉ còn ' + s.fun + ' phút, không đủ trừ lại ' + e.got.fun + ' phút.';
           s.fun -= e.got.fun;
+        } else if (e.got.muffin) {
+          if (s.muffin < e.got.muffin) return 'Cần trừ lại ' + e.got.muffin + ' Muffin thường nhưng chỉ còn ' + s.muffin + '.';
+          s.muffin -= e.got.muffin;
+          clampDown(ensureDay(s, e.date), 'earned', e.got.muffin);
         } else {
           if (!(s.inventory[e.got.item] > 0)) return 'Món thưởng đã được dùng, không hoàn tác được.';
           s.inventory[e.got.item] -= 1;
@@ -1016,11 +1085,17 @@
   /* ================================================================
    * Mô tả bản ghi (hiển thị trong Nhật ký)
    * ================================================================ */
+  // Tên 1 lựa chọn: món trong cửa hàng hoặc 'funN' = N phút giải trí
+  function choiceName(id) {
+    const fm = /^fun(\d+)$/.exec(id);
+    return fm ? fm[1] + ' phút giải trí' : ITEM[id].name;
+  }
   function rewardText(r) {
     if (!r) return '';
     if (r.fun) return r.fun + ' phút giải trí';
+    if (r.muffin) return r.muffin + ' Muffin';
     if (r.item) return ITEM[r.item].name;
-    if (r.choice) return r.choice.map((id) => ITEM[id].name).join(' HOẶC ');
+    if (r.choice) return r.choice.map(choiceName).join(' HOẶC ');
     return '';
   }
   function describeEntry(e) {
@@ -1034,7 +1109,7 @@
       case 'box': return 'Mở Hộp Huyền Thoại → +' + e.reward + ' 🧁';
       case 'goalBonus': return 'Hoàn thành ' + (e.tier || RULES.GOAL_BONUS_COUNT) + ' mục tiêu trong ngày → +' + e.amount + ' 🧁';
       case 'claimDay': return 'Nhận thưởng Chuỗi Ngày mốc ' + e.at + ': ' + rewardText(e.got);
-      case 'claimHabit': return 'Nhận thưởng Chuỗi Thói Quen "' + e.habitName + '" mốc ' + e.at + ': ' + rewardText(e.got);
+      case 'claimHabit': return (e.kind === 'count' ? 'Nhận thưởng Thói Quen "' + e.habitName + '" mốc ' + e.at + ' lần: ' : 'Nhận thưởng Chuỗi Thói Quen "' + e.habitName + '" mốc ' + e.at + ': ') + rewardText(e.got);
       default: return e.type;
     }
   }
@@ -1085,7 +1160,7 @@
     const hin = input.habits || {};
     for (const h of s.habits) {
       const x = hin[h.id];
-      if (!x) continue;
+      if (!x || isCountHabit(h)) continue;
       const hs = n(x.streak);
       if (!isNonNegInt(hs) || !isNonNegInt(n(x.claimedUpTo))) return fail('Chuỗi thói quen "' + h.name + '" không hợp lệ.');
       h.anchor = hs > 0 ? { count: hs, endDate: x.includesToday ? today : addDays(today, -1) } : null;
@@ -1167,7 +1242,7 @@
     createInitialState, migrate,
     logMinutes, deposit, convertFun, purchasePreview, buyItem, useItem, spendFun, funUseInfo,
     boxInfo, pickBoxReward, openBox,
-    computeDayStreak, computeHabitStreak, milestoneStatus, claimDayMilestone, claimHabitMilestone,
+    computeDayStreak, computeHabitStreak, milestoneStatus, claimDayMilestone, claimHabitMilestone, habitMilestones, habitCount, isCountHabit, choiceName,
     addHabit, renameHabit, removeHabit, toggleHabitDay, funConvertInfo,
     goalsOf, planDates, addGoals, editGoal, removeGoal, toggleGoal, goalBonusInfo, copyGoals, pruneGoalDays,
     addTasks, editTask, removeTask, addTasksToDay,

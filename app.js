@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.13.0';
+  const APP_VERSION = '1.14.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -47,6 +47,7 @@
     sparkle: I('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
     plane: I('<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>'),
     star: I('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),
+    tally: I('<path d="M5 5v14M9.5 5v14M14 5v14M18.5 5v14M3 15.5 21 8.5"/>'),
     sprout: I('<path d="M12 21v-9M12 12C12 7 8 5 4 5c0 4 3 7 8 7zM12 12c0-4 3-6 7-6 0 4-3 6-7 6z"/>'),
     upload: I('<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>'),
     lock: I('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
@@ -130,7 +131,7 @@
   const goalToday = () => M.goalDayKey(Date.now()); // mục tiêu đổi ngày lúc 4h sáng
   let lastGoalDay = goalToday();
   let lastToday = todayKey();
-  const ui = { statsRange: 7, statsFrom: null, statsTo: null, logLimit: 60, bump: false, goalDate: lastGoalDay, shopGroup: 'small', streakTab: 'day' };
+  const ui = { statsRange: 7, statsFrom: null, statsTo: null, logLimit: 60, bump: false, goalDate: lastGoalDay, shopGroup: 'small', streakTab: 'day', habitKind: 'streak' };
   state = M.pruneGoalDays(state, lastToday);
 
   function ctx() {
@@ -355,7 +356,7 @@
     const t = todayKey();
     const day = M.milestoneStatus(R.DAY_STREAK_REWARDS, M.computeDayStreak(state, t), state.dayStreak.claims).filter((m) => m.status === 'ready').length;
     let habit = 0;
-    state.habits.forEach((h) => { habit += M.milestoneStatus(R.HABIT_STREAK_REWARDS, M.computeHabitStreak(h, t), h.claims).filter((m) => m.status === 'ready').length; });
+    state.habits.forEach((h) => { habit += M.habitMilestones(h, t).ms.filter((m) => m.status === 'ready').length; });
     return { day: day, habit: habit };
   }
 
@@ -651,19 +652,24 @@
     const c = sc.querySelector('.mc.ready') || sc.querySelector('.mc.locked');
     if (c) sc.scrollLeft = Math.max(0, c.offsetLeft - sc.offsetLeft - 18);
   };
+  const HK_NOTE = { streak: 'Làm liên tục mỗi ngày, bỏ 1 ngày là về 0.', count: 'Cộng dồn số ngày đã làm, bỏ ngày không bị về 0.' };
   function habitsHTML(t) {
     const y = M.addDays(t, -1);
+    const hk = (k, icon, label) => '<button type="button" class="' + (ui.habitKind === k ? 'on' : '') + '" role="radio" aria-checked="' + (ui.habitKind === k) + '" data-act="habit-kind" data-k="' + k + '">' + icon + label + '</button>';
     let h = '<section class="card"><form class="row" data-form="habit-add"><input class="inp" name="name" maxlength="60" autocomplete="off" placeholder="Thói quen mới" aria-label="Tên thói quen mới" enterkeyhint="done">' +
-      '<button class="btn pri" type="submit">Thêm</button></form></section>';
+      '<button class="btn pri" type="submit">Thêm</button></form>' +
+      '<div class="hk-lb" id="hkLb">Tính theo</div><div class="seg sm" role="radiogroup" aria-labelledby="hkLb">' + hk('streak', ICON.streak, 'Chuỗi ngày') + hk('count', ICON.tally, 'Số lần') + '</div>' +
+      '<p class="hk-note" id="hkNote">' + HK_NOTE[ui.habitKind] + '</p></section>';
     if (!state.habits.length) return h + '<section class="card empty">Chưa có thói quen nào</section>';
     state.habits.forEach((hb) => {
-      const st = M.computeHabitStreak(hb, t);
-      const ms = M.milestoneStatus(R.HABIT_STREAK_REWARDS, st, hb.claims);
-      const ready = ms.filter((m) => m.status === 'ready');
-      const next = ms.find((m) => m.status === 'locked');
+      const info = M.habitMilestones(hb, t);
+      const cnt = info.kind === 'count';
+      const unit = cnt ? ' lần' : ' ngày';
+      const ready = info.ms.filter((m) => m.status === 'ready');
+      const next = info.ms.find((m) => m.status === 'locked');
       const done = {}; hb.done.forEach((d) => { done[d] = true; });
       // Ngày khai từ bản cũ (số dư ban đầu) cũng hiện là đã xong
-      if (hb.anchor && hb.anchor.count > 0) {
+      if (!cnt && hb.anchor && hb.anchor.count > 0) {
         for (let i = 0; i < Math.min(hb.anchor.count, 7); i++) done[M.addDays(hb.anchor.endDate, -i)] = true;
       }
       let week = '';
@@ -677,16 +683,18 @@
           '<span>' + (d === t ? 'Nay' : weekday(d)) + '</span><i></i></button>';
       }
       const doneToday = !!done[t];
-      h += '<section class="card habit"><div class="hh"><b>' + esc(hb.name) + '</b><span class="pill ok">' + ICON.sprout + st.count + ' ngày</span>' +
+      h += '<section class="card habit' + (cnt ? ' cnt' : '') + '"><div class="hh"><div class="ttl"><b>' + esc(hb.name) + '</b><div class="kind">' + (cnt ? 'Số lần' : 'Chuỗi ngày') + '</div></div>' +
+        '<span class="pill ok">' + (cnt ? ICON.tally : ICON.sprout) + info.count + unit + '</span>' +
         ib('data-act="habit-del" data-id="' + esc(hb.id) + '"', ICON.trash, 'Xóa thói quen ' + hb.name, 'plain') + '</div>' +
         '<div class="week">' + week + '</div>' +
+        (cnt && next ? '<div class="prog"><span>Tới mốc ' + next.at + ' lần</span><b>' + info.count + '/' + next.at + '</b></div>' + bar(info.count, next.at, null, 'Tiến độ tới mốc ' + next.at + ' lần') : '') +
         '<button type="button" class="btn block ' + (doneToday ? 'done-soft' : 'pri') + '" data-act="habit-toggle" data-id="' + esc(hb.id) + '" data-day="' + t + '" aria-pressed="' + doneToday + '">' +
-        (doneToday ? ICON.check + 'Đã xong hôm nay' : 'Xong hôm nay') + '</button>' +
-        ready.map((m) => '<div class="claim-box"><span>Mốc ' + m.at + ': ' + esc(M.rewardText(m.reward)) + '</span>' +
+        (cnt ? (doneToday ? ICON.check + 'Đã tính hôm nay' : ICON.plus + 'Thêm 1 lần hôm nay') : (doneToday ? ICON.check + 'Đã xong hôm nay' : 'Xong hôm nay')) + '</button>' +
+        ready.map((m) => '<div class="claim-box"><span>Mốc ' + m.at + (cnt ? ' lần' : '') + ': ' + esc(M.rewardText(m.reward)) + '</span>' +
           (m.reward.choice
-            ? m.reward.choice.map((c) => '<button type="button" class="btn sm" data-act="claim-habit" data-id="' + esc(hb.id) + '" data-at="' + m.at + '" data-choice="' + c + '">' + esc(M.ITEM[c].name) + '</button>').join('')
+            ? m.reward.choice.map((c) => '<button type="button" class="btn sm" data-act="claim-habit" data-id="' + esc(hb.id) + '" data-at="' + m.at + '" data-choice="' + c + '">' + esc(M.choiceName(c)) + '</button>').join('')
             : '<button type="button" class="btn sm" data-act="claim-habit" data-id="' + esc(hb.id) + '" data-at="' + m.at + '">Nhận</button>') + '</div>').join('') +
-        (next ? '<p class="next">Mốc ' + next.at + ' ngày: ' + esc(M.rewardText(next.reward)) + '</p>' : '') +
+        (next ? '<p class="next">Mốc ' + next.at + unit + ': ' + esc(M.rewardText(next.reward)) + '</p>' : '') +
         '</section>';
     });
     return h;
@@ -1028,6 +1036,9 @@
       '<section class="card"><h3>6. Chuỗi thói quen</h3><ul><li>Mỗi thói quen có chuỗi riêng: tick hoàn thành trong ngày thì +1, bỏ lỡ 1 ngày thì về 0.</li>' +
       '<li>Được tick bù cho hôm qua nếu quên.</li></ul>' +
       tbl(R.HABIT_STREAK_REWARDS.map((m) => [m.at + ' ngày', esc(M.rewardText(m.reward))])) + '</section>' +
+      '<section class="card"><h3>6b. Thói quen số lần</h3><ul><li>Cộng dồn số ngày đã làm (mỗi ngày tính 1 lần), bỏ ngày không bị về 0.</li>' +
+      '<li>Mỗi mốc chỉ nhận 1 lần. Sau mốc ' + R.HABIT_COUNT_REPEAT.after + ', cứ thêm ' + R.HABIT_COUNT_REPEAT.every + ' lần được ' + esc(M.rewardText(R.HABIT_COUNT_REPEAT.reward)) + '.</li></ul>' +
+      tbl(R.HABIT_COUNT_REWARDS.map((m) => [m.at + ' lần', esc(M.rewardText(m.reward))])) + '</section>' +
       '<section class="card"><h3>7. Nhận thưởng</h3><ul>' +
       '<li>Mỗi mốc nhận được 1 lần trong một lượt chuỗi (với Chuỗi ngày là 1 lần mỗi chu kì). Chuỗi đứt rồi đạt lại thì được nhận lại.</li>' +
       '<li>Thưởng phút → Quỹ giải trí. Thưởng là món → Túi đồ. Muffin từ hộp → Muffin thường.</li></ul></section>' +
@@ -1087,8 +1098,9 @@
       f('cycles', 'Chu kì', st.cycles, 'số lần đã đi hết ' + R.DAY_STREAK_CYCLE_DAYS + ' ngày') +
       f('dayStreak', 'Ngày hiện tại trong chu kì', st.count, '0-' + R.DAY_STREAK_CYCLE_DAYS) + chk('dayIncludesToday', 'Đã tính cả hôm nay', st.todayDone || st.count === 0) +
       f('dayClaimedUpTo', 'Đã nhận thưởng tới mốc', maxClaim(R.DAY_STREAK_REWARDS, st, state.dayStreak.claims), 'VD 10 = đã nhận mốc 5 và 10') + '</section>';
-    if (state.habits.length) {
-      h += '<section class="card"><h3>Chuỗi thói quen</h3>' + state.habits.map((hb) => {
+    const shs = state.habits.filter((hb) => !M.isCountHabit(hb));
+    if (shs.length) {
+      h += '<section class="card"><h3>Chuỗi thói quen</h3>' + shs.map((hb) => {
         const hs = M.computeHabitStreak(hb, t);
         return '<p style="margin-top:10px"><b>' + esc(hb.name) + '</b></p>' + f('h_' + hb.id + '_streak', 'Chuỗi hiện tại', hs.count) +
           chk('h_' + hb.id + '_today', 'Đã tính cả hôm nay', hs.todayDone || hs.count === 0) +
@@ -1144,6 +1156,12 @@
       case 'spend-open': openSpend(); break;
       case 'shop-group': ui.shopGroup = el.dataset.g; render(); break;
       case 'streak-tab': ui.streakTab = el.dataset.tab; render(); break;
+      case 'habit-kind': {
+        ui.habitKind = el.dataset.k === 'count' ? 'count' : 'streak';
+        el.parentNode.querySelectorAll('[data-act=habit-kind]').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+        const note = $('#hkNote'); if (note) note.textContent = HK_NOTE[ui.habitKind];
+        break;
+      }
       case 'theme': lsSet(THEME_KEY, el.dataset.v); applyTheme(); render(); break;
       case 'open-box': doOpenBox(); break;
       case 'buy': doBuy(el.dataset.item); break;
@@ -1168,7 +1186,7 @@
       case 'habit-del': {
         const hb = state.habits.find((x) => x.id === el.dataset.id);
         if (!hb) break;
-        const yes = await confirmBox({ title: 'Xóa thói quen?', html: '<p>Xóa “<b>' + esc(hb.name) + '</b>” và chuỗi ' + M.computeHabitStreak(hb, t).count + ' ngày của nó. Phần thưởng đã nhận vẫn giữ.</p><p class="muted">App tự sao lưu trước khi xóa.</p>', okLabel: 'Xóa', danger: true });
+        const yes = await confirmBox({ title: 'Xóa thói quen?', html: '<p>Xóa “<b>' + esc(hb.name) + '</b>” và ' + (M.isCountHabit(hb) ? M.habitCount(hb) + ' lần đã làm' : 'chuỗi ' + M.computeHabitStreak(hb, t).count + ' ngày') + ' của nó. Phần thưởng đã nhận vẫn giữ.</p><p class="muted">App tự sao lưu trước khi xóa.</p>', okLabel: 'Xóa', danger: true });
         if (yes) { autoBackup('Trước khi xóa thói quen “' + hb.name + '”'); commit(M.removeHabit(state, hb.id)); toast('Đã xóa thói quen', 'info'); }
         break;
       }
@@ -1246,7 +1264,7 @@
     const kind = form.dataset.form;
     const inp = form.querySelector('input[name]');
     if (kind === 'habit-add') {
-      const res = M.addHabit(state, inp.value, ctx());
+      const res = M.addHabit(state, inp.value, ctx(), ui.habitKind);
       if (res.ok) { inp.value = ''; commit(res, null); toast('Đã thêm thói quen', 'success'); } else toast(res.error, 'error');
     } else if (kind === 'streak-min') {
       const r = readInt(inp, { max: 1440, maxMsg: 'Tối đa 1440 phút.' });
