@@ -25,7 +25,7 @@
       home: 15,  // Học ở nhà:   15 phút = 1 Muffin
       class: 25, // Học trên lớp: 25 phút = 1 Muffin
       work: 20,  // Làm việc:    20 phút = 1 Muffin
-      gym: 30,   // Tập gym:     30 phút = 1 Muffin
+      gym: 30,   // Thể thao:    30 phút = 1 Muffin
     },
 
     // Đổi phút giải trí: 1 Muffin thường = 5 phút giải trí.
@@ -185,8 +185,8 @@
   };
 
   const CATS = ['home', 'class', 'work', 'gym'];
-  const CAT_LABEL = { home: 'Học ở nhà', class: 'Học trên lớp', work: 'Làm việc', gym: 'Tập gym' };
-  const CAT_SHORT = { home: 'Ở nhà', class: 'Trên lớp', work: 'Làm việc', gym: 'Tập gym' };
+  const CAT_LABEL = { home: 'Học ở nhà', class: 'Học trên lớp', work: 'Làm việc', gym: 'Thể thao' };
+  const CAT_SHORT = { home: 'Ở nhà', class: 'Trên lớp', work: 'Làm việc', gym: 'Thể thao' };
   const SHOP_GROUPS = [
     { id: 'small', name: 'Giải trí nhỏ' },
     { id: 'shopping', name: 'Mua sắm' },
