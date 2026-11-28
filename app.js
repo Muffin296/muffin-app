@@ -3,7 +3,7 @@
   'use strict';
   const M = window.MuffinRules;
   const R = M.RULES;
-  const APP_VERSION = '1.14.4';
+  const APP_VERSION = '1.15.0';
   const KEY = 'muffin.state';
   const BK_KEY = 'muffin.backups';
   const THEME_KEY = 'muffin.theme';
@@ -382,11 +382,6 @@
     const st = M.computeDayStreak(state, t);
     const fi = M.funConvertInfo(state, t);
     let h = topMain('Hôm nay', weekdayLong(t) + ', ' + fmtShort(t), goBtn('stats', ICON.stats, 'Thống kê') + goBtn('settings', ICON.settings, 'Cài đặt'));
-    if (M.needsBackupReminder(state, Date.now())) {
-      const last = state.meta.lastExport;
-      const days = Math.floor((Date.now() - (last || state.createdAt)) / 86400000);
-      h += '<div class="banner"><span>' + (last ? days + ' ngày chưa sao lưu' : 'Chưa sao lưu lần nào') + '</span><button type="button" class="btn sm pri" data-act="export">Sao lưu</button></div>';
-    }
     if (!state.meta.setupDone && !state.meta.welcomeDismissed) {
       h += '<section class="card welcome"><h3>Chào mừng tới Muffin</h3><p>Có Muffin, Kho hay chuỗi từ bản cũ thì nhập trước nhé.</p>' +
         '<div class="btn-row"><button type="button" class="btn pri" data-act="go" data-view="setup">Nhập số dư</button><button type="button" class="btn" data-act="dismiss-welcome">Bắt đầu từ 0</button></div></section>';
@@ -396,8 +391,8 @@
       '<div class="hv num' + (ui.bump ? ' bump' : '') + '">' + fmt(state.muffin) + '</div><div class="chips">' +
       '<button type="button" class="hchip" data-act="go" data-view="streak" aria-label="Chuỗi ngày ' + st.count + ' trên ' + R.DAY_STREAK_CYCLE_DAYS + (st.todayDone ? ', hôm nay đã tính' : ', còn ' + need + ' phút') + '">' +
       ICON.streak + st.count + '/' + R.DAY_STREAK_CYCLE_DAYS + (st.todayDone ? ICON.check : ' · còn ' + need + '\'') + '</button>' +
-      '<button type="button" class="hchip" data-act="go" data-view="shop" aria-label="Gửi Kho hôm nay ' + fi.deposited + ' trên ' + fi.needKho + '">' +
-      ICON.vault + 'Kho ' + fi.deposited + '/' + fi.needKho + (fi.khoOk ? ICON.check : '') + '</button></div></section>';
+      '<button type="button" class="hchip" data-act="go" data-view="shop" aria-label="Gửi Kho hôm nay ' + fi.deposited + ' trên ' + fi.goalKho + '">' +
+      ICON.vault + 'Kho ' + fi.deposited + '/' + fi.goalKho + (fi.khoOk ? ICON.check : '') + '</button></div></section>';
     h += '<div class="sec"><h2>Ghi phút</h2><span>' + fmt(total) + '\' hôm nay</span></div><div class="lst">' + M.CATS.map((c) => {
       const m = day[c] || 0;
       return '<button type="button" class="lr" data-act="log-open" data-cat="' + c + '" style="' + tone(c) + '" aria-label="Ghi phút ' + M.CAT_LABEL[c] + ', hôm nay ' + m + ' phút">' +
@@ -550,7 +545,8 @@
     let h = topMain('Cửa hàng', fmt(state.muffin) + ' Muffin · Kho ' + fmt(state.kho));
     h += '<div class="two">' +
       '<section class="card"><div class="kh" style="color:var(--kho)">' + ICON.vault + 'Gửi Kho</div>' +
-      '<div class="kv num">' + fi.deposited + '<small>/' + fi.needKho + '</small></div>' + bar(fi.deposited, fi.needKho, 'var(--kho)', 'Gửi Kho hôm nay') +
+      '<div class="kv num">' + fi.deposited + '<small>/' + fi.goalKho + '</small></div>' + bar(fi.deposited, fi.goalKho, 'var(--kho)', 'Gửi Kho hôm nay') +
+      '<div class="muted small" style="margin:4px 0 6px">' + (fi.next ? 'Gửi ' + fi.next.kho + ' → đổi ' + fi.next.maxMin + '\'' : 'Đã đạt mốc cao nhất') + '</div>' +
       '<button type="button" class="btn sm pri" data-act="deposit-open"' + (state.muffin > 0 ? '' : ' disabled') + '>Gửi</button></section>' +
       '<section class="card"><div class="kh" style="color:var(--bx)">' + ICON.clock + 'Đổi phút</div>' +
       '<div class="kv num">' + fi.converted + '<small>/' + fi.maxMin + '</small></div>' + bar(fi.converted, fi.maxMin, 'var(--bx)', 'Phút đã đổi hôm nay') +
@@ -569,13 +565,13 @@
 
   async function openDeposit() {
     const fi = M.funConvertInfo(state, todayKey());
-    const need = Math.max(0, fi.needKho - fi.deposited);
+    const need = Math.max(0, fi.goalKho - fi.deposited);
     const quick = [need, 10, 20, 50].filter((v, i, a) => v > 0 && a.indexOf(v) === i).slice(0, 4);
     const v = await numPad({
-      title: 'Gửi Kho', sub: 'Hôm nay ' + fi.deposited + '/' + fi.needKho + ' · Kho ' + fmt(state.kho), icon: ICON.vault, tone: 'kho', unit: 'Muffin',
+      title: 'Gửi Kho', sub: 'Hôm nay ' + fi.deposited + '/' + fi.goalKho + ' · Kho ' + fmt(state.kho), icon: ICON.vault, tone: 'kho', unit: 'Muffin',
       initial: need && need <= state.muffin ? need : '',
       quick: quick.map((q) => ({ v: q, label: q === need && need ? 'Đủ ' + q : String(q) })),
-      hint: 'Có ' + fmt(state.muffin) + ' Muffin thường',
+      hint: 'Có ' + fmt(state.muffin) + ' Muffin thường' + (fi.next ? ' · đủ ' + fi.next.kho + ' mở ' + fi.next.maxMin + '\'' : ''),
       check: (v) => v > state.muffin ? { err: 'Chỉ có ' + fmt(state.muffin) + ' Muffin thường' } : { html: ICON.vault + 'Kho ' + fmt(state.kho) + ' → ' + fmt(state.kho + v) },
       okLabel: (v) => v ? 'Gửi ' + fmt(v) + ' Muffin' : 'Gửi',
     });
@@ -1021,7 +1017,7 @@
       '<li><b>Mua đồ</b>: trừ Kho trước, thiếu thì trừ thêm Muffin thường. App hiện trước số bị trừ.</li>' +
       '<li>Phút giải trí vào <b>Quỹ giải trí</b>; tiêu bằng nút “Tiêu phút” ở Túi đồ.</li>' +
       '<li><b>Mỗi ngày phải gửi ít nhất ' + R.DAILY_KHO_MIN + ' Muffin vào Kho</b>. Chưa gửi đủ thì chưa đổi được phút giải trí (vẫn mua đồ bình thường).</li>' +
-      '<li><b>Mỗi ngày đổi tối đa ' + R.FUN_CONVERT_MAX_MINUTES_PER_DAY + ' phút giải trí</b> (2 tiếng, tức ' + Math.floor(R.FUN_CONVERT_MAX_MINUTES_PER_DAY / R.FUN_MINUTES_PER_MUFFIN) + ' Muffin). Phút thưởng từ chuỗi không tính vào giới hạn này.</li>' +
+      '<li><b>Mốc Gửi Kho trong ngày</b>: ' + R.KHO_TIERS.map((x) => 'gửi ' + x.kho + ' → đổi tối đa <b>' + x.maxMin + ' phút</b>').join('; ') + '. Phút thưởng từ chuỗi không tính vào giới hạn này.</li>' +
       '<li><b>Giới hạn mỗi mục mỗi ngày</b>: ' + R.FUN_APPS.map((a) => a.name + ' ' + a.limit + '\'').join(', ') + '. Dùng hết thì mục đó bị khoá tới hết ngày, qua 0:00 mở lại.</li></ul></section>' +
       '<section class="card"><h3>3. Hộp Huyền Thoại</h3><ul><li>Trong 1 ngày <b>học ở nhà đủ ' + R.BOX.HOME_MINUTES_PER_DAY + ' phút</b> thì được mở hộp 1 lần (ở tab Túi đồ).</li>' +
       '<li><b>Mỗi ngày chỉ mở 1 lần</b>, học nhiều hơn cũng không thêm lượt. Qua 0:00 đếm lại từ 0; không mở trong ngày thì mất lượt hôm đó.</li>' +
@@ -1048,7 +1044,7 @@
       '<li>Mục tiêu đổi sang ngày mới lúc <b>' + R.GOAL_DAY_START_HOURS + 'h sáng</b>: trước ' + R.GOAL_DAY_START_HOURS + 'h vẫn tick được mục tiêu của hôm trước.</li>' +
       '<li><b>Kho nhiệm vụ</b>: điền sẵn nhiều nhiệm vụ (mỗi dòng 1 cái), rồi chạm để lấy ra làm mục tiêu cho ngày đang chọn.</li>' +
       '<li>Mọi hành động đều vào Nhật ký; có Hoàn tác và xóa từng bản ghi (tự cộng/trừ lại điểm).</li>' +
-      '<li>Dữ liệu chỉ nằm trên máy này. Nên Xuất JSON ít nhất mỗi tuần (app sẽ nhắc sau ' + R.BACKUP_REMIND_DAYS + ' ngày).</li></ul></section>' +
+      '<li>Dữ liệu chỉ nằm trên máy này. Nên Xuất JSON ít nhất mỗi tuần (ở Cài đặt).</li></ul></section>' +
       '</div>';
   };
 

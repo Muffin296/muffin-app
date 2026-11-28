@@ -44,11 +44,11 @@
       { id: 'web', name: 'Website', limit: 60 },
     ],
 
-    // Hộp Huyền Thoại: trong 1 ngày học ở nhà đủ 200 phút thì mở được 1 lần (mỗi ngày tối đa 1 lần).
+    // Hộp Huyền Thoại: trong 1 ngày học ở nhà đủ 300 phút thì mở được 1 lần (mỗi ngày tối đa 1 lần).
     // Tính riêng từng ngày: qua ngày mới đếm lại từ 0, không mở trong ngày thì mất lượt.
     // Mỗi lượt thưởng ngẫu nhiên 2, 4 hoặc 7 Muffin thường, xác suất đều nhau (weight bằng nhau).
     BOX: {
-      HOME_MINUTES_PER_DAY: 200,
+      HOME_MINUTES_PER_DAY: 300,
       REWARDS: [
         { muffin: 2, weight: 1 },
         { muffin: 4, weight: 1 },
@@ -168,6 +168,13 @@
     FUN_CONVERT_MAX_MINUTES_PER_DAY: 120,
     // Mỗi ngày phải gửi đủ 5 Muffin vào Kho thì mới được đổi phút giải trí hôm đó.
     DAILY_KHO_MIN: 5,
+    // Mốc Gửi Kho trong ngày: gửi càng nhiều thì giới hạn đổi phút hôm đó càng cao.
+    // Gửi 5 → đổi tối đa 120 phút; gửi 10 → 135 phút; gửi 15 → 150 phút.
+    KHO_TIERS: [
+      { kho: 5, maxMin: 120 },
+      { kho: 10, maxMin: 135 },
+      { kho: 15, maxMin: 150 },
+    ],
     // Mục tiêu: thêm bao nhiêu mục mỗi ngày cũng được, lên kế hoạch được cho hôm nay và 6 ngày tới.
     GOAL_PLAN_DAYS: 7,
     // Thưởng mục tiêu: hoàn thành đủ 10 mục tiêu trong 1 ngày → +2 Muffin thường (mỗi ngày 1 lần).
@@ -410,11 +417,16 @@
     const day = state.days[today] || {};
     const deposited = day.deposited || 0;
     const converted = day.conv || 0;
-    const maxMin = RULES.FUN_CONVERT_MAX_MINUTES_PER_DAY;
+    const tiers = RULES.KHO_TIERS;
+    const reached = tiers.filter((x) => deposited >= x.kho);
+    const tier = reached.length ? reached[reached.length - 1] : null; // mốc cao nhất đã đạt
+    const next = tiers.find((x) => deposited < x.kho) || null;        // mốc kế tiếp chưa đạt
+    const maxMin = tier ? tier.maxMin : tiers[0].maxMin;
     const leftMin = Math.max(0, maxMin - converted);
     const per = RULES.FUN_MINUTES_PER_MUFFIN;
     return {
       deposited: deposited, needKho: RULES.DAILY_KHO_MIN, khoOk: deposited >= RULES.DAILY_KHO_MIN,
+      tier: tier, next: next, goalKho: next ? next.kho : tiers[tiers.length - 1].kho, // goalKho: mốc đang nhắm tới (hết mốc thì là mốc cuối)
       converted: converted, maxMin: maxMin, leftMin: leftMin,
       maxMuffin: Math.min(state.muffin, Math.floor(leftMin / per)), // số Muffin còn đổi được hôm nay
     };
@@ -1006,11 +1018,16 @@
         clampDown(day, 'earned', loss);
         return null;
       }
-      case 'deposit':
+      case 'deposit': {
         if (s.kho < e.amount) return 'Kho chỉ còn ' + s.kho + ' Muffin, không đủ để rút lại ' + e.amount + '.';
+        const dd = s.days[e.date] || {};
+        const after = Object.assign({}, s, { days: Object.assign({}, s.days, { [e.date]: Object.assign({}, dd, { deposited: Math.max(0, (dd.deposited || 0) - e.amount) }) }) });
+        const fa = funConvertInfo(after, e.date);
+        if ((dd.conv || 0) > 0 && (!fa.khoOk || (dd.conv || 0) > fa.maxMin)) return 'Số phút giải trí đã đổi hôm đó cần mốc Kho này. Hãy hoàn tác lần đổi phút trước.';
         s.kho -= e.amount; s.muffin += e.amount;
         clampDown(ensureDay(s, e.date), 'deposited', e.amount);
         return null;
+      }
       case 'convert': {
         if (s.fun < e.minutes) return 'Quỹ giải trí chỉ còn ' + s.fun + ' phút, không đủ trừ lại ' + e.minutes + ' phút.';
         s.fun -= e.minutes; s.muffin += e.amount;
